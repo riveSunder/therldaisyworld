@@ -13,6 +13,11 @@ class RLDaisyWorld():
 
         # channels
         self.ch = 5
+        # batch_size 
+        self.batch_size = 1
+        self.dark_proportion = 0.1
+        self.light_proportion = 0.1
+        self.dim = 64
 
         # Stefan-Boltzmann constant
         self.sigma = 5.67*10**-8
@@ -34,6 +39,7 @@ class RLDaisyWorld():
 
         self.dt = 1.0
         self.initialize_neighborhood()
+        self.initialize_grid()
 
     def initialize_neighborhood(self):
 
@@ -51,7 +57,49 @@ class RLDaisyWorld():
         for param in self.neighborhood_conv.named_parameters():
             param[1].requires_grad = False
             param[1][:] = self.kernel
-    
+
+    def initialize_grid(self):
+
+        dark_probability = torch.rand(\
+                self.batch_size,\
+                1,\
+                self.dim,\
+                self.dim)
+
+        light_probability = torch.rand(\
+                self.batch_size,\
+                1,\
+                self.dim,\
+                self.dim)
+
+        dark_daisies = 1.0 * (dark_probability < self.dark_proportion) \
+                * (dark_probability > light_probability)
+        light_daisies = 1.0 * (light_probability < self.light_proportion) \
+                * (dark_probability < light_probability)
+
+        grid =  torch.zeros(\
+                self.batch_size,\
+                self.ch,\
+                self.dim,\
+                self.dim)
+
+        grid[:,1,...] = light_daisies
+        grid[:,2,...] = dark_daisies
+
+        neighborhood = self.neighborhood_conv(grid)
+
+        # albedo
+        grid[:,0,:,:] = self.calculate_albedo(grid) 
+        # temperature
+        grid[:,3,:,:] = self.calculate_temperature(\
+                grid, neighborhood) 
+
+        self.grid = grid
+
+    def reset(self):
+
+        self.initialize_grid()
+
     def calculate_growth_rate(self, temp):
 
         beta = 1 - 0.003265*(self.temp_optimal - temp)**2
@@ -132,8 +180,13 @@ class RLDaisyWorld():
 
         return new_grid
 
-    def step(self, action):
-        pass
+    def step(self, action=None):
+        
+        self.grid = self.forward(self.grid)
+
+        reward, obs, done, info = 0, self.grid, 0, {}
+
+        return reward, obs, done, info
 
     def __call__(self, grid): 
 
