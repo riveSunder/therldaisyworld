@@ -24,15 +24,19 @@ class RLDaisyWorld():
         # positve constant for calculating temp
         self.q = .1
         # death rate for daisies (constant)
-        self.gamma = 0.1
+        self.gamma = 0.05
         # stellar luminosity R[0.,2.]
-        self.L = 1.0
+        self.S = 450
+        self.L = 0.9
+        self.max_L = 1.2
+        self.min_L = 0.8
+        self.ramp_period = 1000
+        self.dL = 4 * (self.max_L - self.min_L) / self.ramp_period
         # flux constant
-        self.S = 1.0
 
-        self.albedo_bare = 0.3
+        self.albedo_bare = 0.5
         self.albedo_light = 0.75
-        self.albedo_dark = 0.1
+        self.albedo_dark = 0.25
         # optimal temperature for plant growth (Kelvin)
         self.temp_optimal = 295.5
         
@@ -72,10 +76,13 @@ class RLDaisyWorld():
                 self.dim,\
                 self.dim)
 
-        dark_daisies = 1.0 * (dark_probability < self.dark_proportion) \
-                * (dark_probability > light_probability)
-        light_daisies = 1.0 * (light_probability < self.light_proportion) \
-                * (dark_probability < light_probability)
+        dark_daisies = 1.0 * (dark_probability < self.dark_proportion) 
+        light_daisies = 1.0 * (light_probability < self.light_proportion) 
+
+        # daisies can't grow in the same place
+        no_daisy_mask = light_daisies * dark_daisies
+        dark_daisies[no_daisy_mask] = 0
+        light_daisies[no_daisy_mask] = 0
 
         grid =  torch.zeros(\
                 self.batch_size,\
@@ -88,16 +95,22 @@ class RLDaisyWorld():
 
         neighborhood = self.neighborhood_conv(grid)
 
+        beta = self.calculate_growth_rate(\
+                grid[:,3,...])
+        not_update = self.calculate_growth(\
+                beta, grid, neighborhood)
         # albedo
         grid[:,0,:,:] = self.calculate_albedo(grid) 
+        neighborhood = self.neighborhood_conv(grid)
         # temperature
         grid[:,3,:,:] = self.calculate_temperature(\
                 grid, neighborhood) 
-
         self.grid = grid
+
 
     def reset(self):
 
+        self.step_count = 0
         self.initialize_grid()
 
     def calculate_growth_rate(self, temp):
@@ -121,8 +134,9 @@ class RLDaisyWorld():
         dd_dt = n_d*(1-i_l)*beta - (self.gamma)
 
         # growth occurs in unoccupied or same-occupied cells
-        growth[:,0,...] = dl_dt - dd_dt #* (dl_dt > dd_dt) #* (i_d <= 0.0)
-        growth[:,1,...] = dd_dt- dl_dt 
+        growth[:,0,...] = dl_dt #- dd_dt
+        #* (dl_dt > dd_dt) #* (i_d <= 0.0)
+        growth[:,1,...] = dd_dt
         #* (dl_dt < dd_dt) #* (i_l <= 0.0)
 
         self.growth = growth
@@ -157,6 +171,26 @@ class RLDaisyWorld():
 
         return temp
 
+    def assign_daisies(self, grid):
+
+        # discretize presence of daisies according to 
+        # daisy channels as probabilities. 
+
+        new_grid = 0. * grid
+
+        daisy_dark_prob = torch.rand_like(grid[:,1,:,:])
+        daisy_light_prob = torch.rand_like(grid[:,2,:,:])
+
+        new_grid[:,2,:,:] = 1.0 * (grid[:,2,:,:] > daisy_dark_prob)
+        new_grid[:,1,:,:] = grid[:,1,:,:] > daisy_light_prob
+
+        new_grid[:,2,:,:] -= new_grid[:,1,:,:] \
+                * (daisy_dark_prob < daisy_light_prob)
+        new_grid[:,1,:,:] -= new_grid[:,2,:,:] \
+                * (daisy_dark_prob >= daisy_light_prob)
+
+        return torch.clamp(new_grid, 0.0, 1.0)
+
     def forward(self, grid):
 
         neighborhood = self.neighborhood_conv(grid)
@@ -171,6 +205,7 @@ class RLDaisyWorld():
 
         self.update = update
         new_grid = torch.clamp(grid + self.dt * update, 0., 1.0)
+        new_grid = self.assign_daisies(new_grid)
 
         # daisy channels are updated, but temperature \
         # and albedo are a state based on albedo
@@ -184,7 +219,17 @@ class RLDaisyWorld():
 
     def update_L(self, L):
 
-        return L + 0.001
+        self.step_count += 1
+        if self.step_count % self.ramp_period == 0:
+            self.dL *= -1
+            self.min_L -= 0.01
+            self.max_L += 0.01
+
+        L += self.dL
+
+        return max([min([L, self.max_L]), self.min_L])
+
+        
 
     def step(self, action=None):
         
