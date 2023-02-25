@@ -26,7 +26,7 @@ class RLDaisyWorld():
         # death rate for daisies (constant)
         self.gamma = 0.05
         # stellar luminosity R[0.,2.]
-        self.S = 450
+        self.S = 510
         self.L = 0.9
         self.max_L = 1.2
         self.min_L = 0.8
@@ -81,8 +81,8 @@ class RLDaisyWorld():
 
         # daisies can't grow in the same place
         no_daisy_mask = light_daisies * dark_daisies
-        dark_daisies[no_daisy_mask] = 0
-        light_daisies[no_daisy_mask] = 0
+        dark_daisies[no_daisy_mask > 0] = 0
+        light_daisies[no_daisy_mask > 0] = 0
 
         grid =  torch.zeros(\
                 self.batch_size,\
@@ -218,6 +218,7 @@ class RLDaisyWorld():
         return new_grid
 
     def update_L(self, L):
+    
 
         self.step_count += 1
         if self.step_count % self.ramp_period == 0:
