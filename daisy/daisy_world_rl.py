@@ -15,24 +15,26 @@ class RLDaisyWorld():
         self.ch = 5
         # batch_size 
         self.batch_size = 1
-        self.dark_proportion = 0.3
-        self.light_proportion = 0.3
-        self.dim = 32
+        # size of the toroidal daisyworld
+        self.dim = 8
 
+        # model parameters
+        self.p = 1.00 #1.0
+        self.g = 0.003265
+        self.S = 1000.0
         # Stefan-Boltzmann constant
-        self.sigma = 5.67*10**-8
-        # positve constant for calculating temp
-        self.q = .1
-        # death rate for daisies (constant)
+        self.sigma = 5.67e-8
         self.gamma = 0.05
+        self.q = 0.2 * self.S / self.sigma
+        self.Toptim = 295.5
+        self.dt = 0.01
+        self.ddL = 0.
+        
         # stellar luminosity R[0.,2.]
-        self.S = 510
-        self.L = 0.9
-        self.max_L = 1.2
-        self.min_L = 0.8
-        self.ramp_period = 1000
-        self.dL = 4 * (self.max_L - self.min_L) / self.ramp_period
-        # flux constant
+        self.max_L = 1.15
+        self.min_L = 0.75
+        self.initial_L = self.min_L
+        self.ramp_period = 100 #* 1./self.dt)
 
         self.albedo_bare = 0.5
         self.albedo_light = 0.75
@@ -40,49 +42,80 @@ class RLDaisyWorld():
         # optimal temperature for plant growth (Kelvin)
         self.temp_optimal = 295.5
         
+        # proportion of daisies per cell
+        self.initial_al = 0.2
+        self.initial_ad = 0.2
+        # proportion of cells with daisies
+        self.light_proportion = 0.33
+        self.dark_proportion = 0.33
 
-        self.dt = 1.0
         self.initialize_neighborhood()
-        self.initialize_grid()
+        self.reset()
 
     def initialize_neighborhood(self):
 
-        self.kernel = torch.ones(self.ch,1,3,3)
-        #self.kernel[:,:,1,1] = 0.0
-        self.kernel = self.kernel / self.kernel.sum()
-        dim = self.kernel.shape[-1]
-        padding = (dim - 1) // 2
+        ## Convolution for daisy density
+        # central kernel weight is 0.67, adjacent weights = .37/8
+        self.n_daisies = 2
+        self.daisy_kernel = torch.ones(1,1,3,3) * 0.0465
+        self.daisy_kernel[:,:,1,1] = 0.67
+        #self.kernel = self.ch * self.kernel / self.kernel.sum()
+        kernel_dim = self.daisy_kernel.shape[-1]
+        padding = (kernel_dim - 1) // 2
 
-        self.neighborhood_conv = nn.Conv2d(self.ch, self.ch,\
-                dim, groups=self.ch, padding=padding,\
+        self.daisy_conv = nn.Conv2d(1, 1,\
+                kernel_dim, padding=padding,\
                 padding_mode="circular", \
                 bias=False)
 
-        for param in self.neighborhood_conv.named_parameters():
+        for param in self.daisy_conv.named_parameters():
             param[1].requires_grad = False
-            param[1][:] = self.kernel
+            param[1][:] = self.daisy_kernel
+
+        # local and adjacent albedo convs
+        self.local_albedo_kernel = torch.zeros(1, 1, 3,3)
+        self.local_albedo_kernel[:,:,1,1] = 1.0
+        self.adjacent_albedo_kernel = torch.ones(1, 1, 3,3) \
+                * 1/9. 
+        kernel_dim = self.local_albedo_kernel.shape[-1]
+        padding = (kernel_dim - 1) // 2
+
+        self.local_albedo_conv = nn.Conv2d(1, 1,
+                kernel_dim, padding=padding,\
+                padding_mode="circular", \
+                bias=False)
+
+        self.adjacent_albedo_conv = nn.Conv2d(1, 1,
+                kernel_dim, padding=padding,\
+                padding_mode="circular", \
+                bias=False)
+
+        for param in self.local_albedo_conv.named_parameters():
+            param[1].requires_grad = False
+            param[1][:] = self.local_albedo_kernel
+
+        for param in self.adjacent_albedo_conv.named_parameters():
+            param[1].requires_grad = False
+            param[1][:] = self.adjacent_albedo_kernel
 
     def initialize_grid(self):
 
         dark_probability = torch.rand(\
                 self.batch_size,\
-                1,\
+                2,\
                 self.dim,\
                 self.dim)
 
         light_probability = torch.rand(\
                 self.batch_size,\
-                1,\
+                2,\
                 self.dim,\
                 self.dim)
 
-        dark_daisies = 1.0 * (dark_probability < self.dark_proportion) 
-        light_daisies = 1.0 * (light_probability < self.light_proportion) 
-
-        # daisies can't grow in the same place
-        no_daisy_mask = light_daisies * dark_daisies
-        dark_daisies[no_daisy_mask > 0] = 0
-        light_daisies[no_daisy_mask > 0] = 0
+        dark_daisies = 1.0 * (dark_probability[:,0,:,:] < self.dark_proportion) \
+                * self.initial_ad * dark_probability[:,1,:,:] 
+        light_daisies = 1.0 * (light_probability[:,0,:,:] < self.light_proportion) \
+                * self.initial_al * light_probability[:,1,:,:] 
 
         grid =  torch.zeros(\
                 self.batch_size,\
@@ -90,151 +123,131 @@ class RLDaisyWorld():
                 self.dim,\
                 self.dim)
 
+        grid[:,0,...] = self.p - light_daisies - dark_daisies
         grid[:,1,...] = light_daisies
         grid[:,2,...] = dark_daisies
 
-        neighborhood = self.neighborhood_conv(grid)
+        local_albedo, adjacent_albedo = self.calculate_albedo(grid[:,:3,:,:])
+        daisy_density = self.calculate_daisy_density(grid[:,1:3,:,:])
 
-        beta = self.calculate_growth_rate(\
-                grid[:,3,...])
-        not_update = self.calculate_growth(\
-                beta, grid, neighborhood)
-        # albedo
-        grid[:,0,:,:] = self.calculate_albedo(grid) 
-        neighborhood = self.neighborhood_conv(grid)
-        # temperature
-        grid[:,3,:,:] = self.calculate_temperature(\
-                grid, neighborhood) 
+        temp = self.calculate_temperature(local_albedo, adjacent_albedo)
+        beta = self.calculate_growth_rate(temp)
+        growth = self.calculate_growth(beta, daisy_density)
+
+        grid[:,3,:,:] = temp
         self.grid = grid
-
 
     def reset(self):
 
+        self.L = self.min_L
+        self.dL = 2 * (self.max_L - self.min_L) / self.ramp_period
+
         self.step_count = 0
+        self.dL = 2 * (self.max_L - self.min_L) / self.ramp_period
         self.initialize_grid()
 
     def calculate_growth_rate(self, temp):
-        beta = 1 - 0.003265*(self.temp_optimal - temp)**2 #, 0,1.)
+        beta = 1 - self.g*(self.temp_optimal - temp)**2 #, 0,1.)
         self.beta = beta
         return beta
 
-    def calculate_growth(self, beta, grid, neighborhood):
+    def calculate_growth(self, beta, daisy_density):
         """
         """
-        growth = torch.zeros_like(grid[:,1:3,:,:])
 
         # light daisies 
-        i_l = grid[:, 1, ...] 
-        n_l = neighborhood[:, 1, ...] 
+        a_l = daisy_density[:, 0, :, :] 
         # dark daisies
-        i_d = grid[:, 2, ...]
-        n_d = neighborhood[:, 2, ...]
+        a_d = daisy_density[:, 1, :, :] 
 
-        dl_dt = n_l*(1-i_d)*beta - (self.gamma)
-        dd_dt = n_d*(1-i_l)*beta - (self.gamma)
+        # bare ground available for growth 
+        a_b = self.p - a_l - a_d 
 
-        # growth occurs in unoccupied or same-occupied cells
-        growth[:,0,...] = dl_dt #- dd_dt
-        #* (dl_dt > dd_dt) #* (i_d <= 0.0)
+        dl_dt = a_l*(a_b * beta - self.gamma)
+        dd_dt = a_d*(a_b * beta - self.gamma)
+
+        growth = torch.zeros_like(daisy_density)
+        growth[:,0,...] = dl_dt 
         growth[:,1,...] = dd_dt
-        #* (dl_dt < dd_dt) #* (i_l <= 0.0)
 
         self.growth = growth
+
         return growth
 
-    def calculate_albedo(self, grid):
+    def calculate_albedo(self, groundcover):
 
-        # light daisies 
-        i_l = grid[:, 1, ...] 
-        # dark daisies
-        i_d = grid[:, 2, ...]
+        # groundcover has 3 channels (bare, light daisies, dark daisies)
 
-        albedo = self.albedo_bare * (1 - i_d - i_l) \
-                + self.albedo_light * i_l + self.albedo_dark * i_d
+        groundcover[:,0,...] = self.p - groundcover[:,1,:,:] - groundcover[:,2,:,:] 
+        local_albedo = torch.zeros(1,1,self.dim, self.dim) 
+        adjacent_albedo = torch.zeros(1,1,self.dim, self.dim) 
 
-        self.albedo = torch.clamp(albedo, 0, 1.0)
-        return torch.clamp(albedo, 0, 1.0)
+        for ii, albedo in enumerate([\
+                self.albedo_bare, self.albedo_light, self.albedo_dark]):
 
-    def calculate_temperature(self, grid, neighborhood):
+            local_albedo += albedo * self.local_albedo_conv(groundcover[:,ii:ii+1,:,:])
+            adjacent_albedo += albedo * self.adjacent_albedo_conv(groundcover[:,ii:ii+1,:,:])
+    
+        return local_albedo, adjacent_albedo
+
+    def calculate_temperature(self, local_albedo, adjacent_albedo):
 
         # local albedo 
-        i_a = grid[:,0]
+        Al = local_albedo
         # neighborhood albedo
-        n_a = neighborhood[:,0]
+        A = adjacent_albedo
         
         # effective radiation temperature
         self.temp_effective = (\
-                (self.S*self.L * (1-n_a))/self.sigma)**(1/4)
+                (self.S*self.L * (1-A))/self.sigma)**(1/4)
 
-        temp = (self.q*(n_a - i_a) + self.temp_effective**4)**(1/4)
+        temp = (self.q*(A - Al) + self.temp_effective**4)**(1/4)
         self.temp = temp
 
         return temp
 
-    def assign_daisies(self, grid):
+    def calculate_daisy_density(self, local_daisies):
 
-        # discretize presence of daisies according to 
-        # daisy channels as probabilities. 
+        daisy_density = torch.zeros(1,2, self.dim, self.dim)
 
-        new_grid = 0. * grid
+        for jj in range(self.n_daisies):
+            daisy_density[:,jj:jj+1,:,:] = self.daisy_conv(local_daisies[:,jj:jj+1,:,:])
 
-        daisy_dark_prob = torch.rand_like(grid[:,1,:,:])
-        daisy_light_prob = torch.rand_like(grid[:,2,:,:])
-
-        new_grid[:,2,:,:] = 1.0 * (grid[:,2,:,:] > daisy_dark_prob)
-        new_grid[:,1,:,:] = grid[:,1,:,:] > daisy_light_prob
-
-        new_grid[:,2,:,:] -= new_grid[:,1,:,:] \
-                * (daisy_dark_prob < daisy_light_prob)
-        new_grid[:,1,:,:] -= new_grid[:,2,:,:] \
-                * (daisy_dark_prob >= daisy_light_prob)
-
-        return torch.clamp(new_grid, 0.0, 1.0)
+        return daisy_density
 
     def forward(self, grid):
 
-        neighborhood = self.neighborhood_conv(grid)
+        local_albedo, adjacent_albedo = self.calculate_albedo(grid[:,:3,:,:])
+        daisy_density = self.calculate_daisy_density(grid[:,1:3,:,:])
 
-        update = torch.zeros_like(grid)
+        temp = self.calculate_temperature(local_albedo, adjacent_albedo)
+        beta = self.calculate_growth_rate(temp)
+        growth = self.calculate_growth(beta, daisy_density)
 
-        # daisy channels (light and dark)
-        beta = self.calculate_growth_rate(\
-                grid[:,3,...])
-        update[:,1:3,:,:] = self.calculate_growth(\
-                beta, grid, neighborhood)
+        new_grid = 1. * grid
+        grid[:,3,:,:] = temp
+        new_grid[:,1:3, :,:] = torch.clamp(grid[:,1:3, :,:] + self.dt * growth, 0,1)
+        new_grid[:,0, :,:] = self.p - new_grid[:,1, :,:] - new_grid[:,2,:,:] #.sum(dim=1)
 
-        self.update = update
-        new_grid = torch.clamp(grid + self.dt * update, 0., 1.0)
-        new_grid = self.assign_daisies(new_grid)
-
-        # daisy channels are updated, but temperature \
-        # and albedo are a state based on albedo
-        # albedo
-        new_grid[:,0,:,:] = self.calculate_albedo(grid) 
-        # temperature
-        new_grid[:,3,:,:] = self.calculate_temperature(\
-                grid, neighborhood) 
 
         return new_grid
 
     def update_L(self, L):
     
-
         self.step_count += 1
         if self.step_count % self.ramp_period == 0:
             self.dL *= -1
-            self.min_L -= 0.01
-            self.max_L += 0.01
+            self.min_L -= self.ddL
+            self.max_L += self.ddL
 
         L += self.dL
 
         return max([min([L, self.max_L]), self.min_L])
 
-        
-
     def step(self, action=None):
         
-        self.grid = self.forward(self.grid) 
+        for ii in range(int(1. / self.dt)):
+            self.grid = self.forward(self.grid) 
 
         reward, obs, done, info = 0, self.grid[:,0:3,...], 0, {}
 
@@ -251,7 +264,7 @@ if __name__ == "__main__":
 
     env = RLDaisyWorld()
 
-    a = torch.rand(1,env.ch,16,16)
+    a = env.grid
 
     b = env.forward(a)
 
