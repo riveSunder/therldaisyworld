@@ -25,7 +25,6 @@ class SimpleDaisyWorld():
         self.max_L = 2.00
         self.min_L = 0.7
         self.steps_per_period = 10000
-        self.dL = 2 * (self.max_L - self.min_L) / self.steps_per_period
 
         self.initial_L = self.min_L
         self.initial_ab = 0.2
@@ -36,6 +35,8 @@ class SimpleDaisyWorld():
 
 
     def reset(self):
+
+        self.dL = 2 * (self.max_L - self.min_L) / self.steps_per_period
 
         self.ag = self.initial_ag
         self.ab = self.initial_ab
@@ -119,9 +120,9 @@ class SimpleDaisyWorld():
                 self.step()
                 self.store_values()
 
-    def plot_curve(self):
+    def plot_curve(self, show_habitable=False):
 
-        fig, ax = plt.subplots(2,1, figsize=(12,6))
+        fig, ax = plt.subplots(2,1, figsize=(10,8))
         ax2 = ax[1].twinx()
 
         lines = ax[1].plot(self.list_steps, self.list_L, "--", \
@@ -131,14 +132,31 @@ class SimpleDaisyWorld():
         lines += ax2.plot(self.list_steps, self.list_Te, \
                 color=self.my_cmap2(128), label="daisyworld temp", lw=5, alpha=0.5)
 
+        if show_habitable:
+            pm_range = np.sqrt(1 / self.g)
+
+            my_x = [0, max(self.list_steps)]
+            upper = self.Toptim + pm_range
+            lower = self.Toptim - pm_range
+
+            my_fill = ax2.fill_between(my_x, [lower, lower],\
+                    [upper, upper], alpha=0.1225, color=self.my_cmap2(96),\
+                    label="habitable range")
+            lines += ax2.plot(my_x, [self.Toptim, self.Toptim],\
+                    alpha=0.1225, color=self.my_cmap2(96), \
+                    label="habitable range")
+
         labels = [line.get_label() for line in lines]
         ax[1].legend(lines, labels, loc=2)
-        #ax[0].plot(self.list_steps, self.list_ag, color=[0.4,0.4,0.3], label="bare ground", lw=5, alpha=0.5)
         ax[0].plot(self.list_steps, self.list_ab, "-.", \
                 color=self.my_cmap(0), label="black daisies", lw=5, alpha=0.5)
         ax[0].plot(self.list_steps, self.list_aw, "--", \
                 color=self.my_cmap(200), label="white daisies", lw=5, alpha=0.5)
         ax[0].legend()
+
+        ax[1].set_xlim(0, max(self.list_steps))
+        ax[0].set_xlim(0, max(self.list_steps))
+
 
 
         return fig, ax
