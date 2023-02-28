@@ -25,6 +25,8 @@ class RLDaisyWorld():
         # Stefan-Boltzmann constant
         self.sigma = 5.67e-8
         self.gamma = 0.05
+        # starvation/food depletion for agents
+        self.agent_gamma = 0.05
         self.q = 0.2 * self.S / self.sigma
         self.Toptim = 295.5
         self.dt = 0.01
@@ -32,9 +34,9 @@ class RLDaisyWorld():
         
         # stellar luminosity R[0.,2.]
         self.max_L = 1.15
-        self.min_L = 0.75
+        self.min_L = 0.7
         self.initial_L = self.min_L
-        self.ramp_period = 100 #* 1./self.dt)
+        self.ramp_period = 100 
 
         self.albedo_bare = 0.5
         self.albedo_light = 0.75
@@ -49,8 +51,64 @@ class RLDaisyWorld():
         self.light_proportion = 0.33
         self.dark_proportion = 0.33
 
+        self.n_agents = 1
+
         self.initialize_neighborhood()
+        self.initialize_agents()
         self.reset()
+
+    def initialize_agents(self):
+
+        self.agent_indices = torch.randint(self.dim, \
+                size=(self.batch_size, self.n_agents, 2))
+
+        # the "bellies" of the agents
+        self.agent_states = torch.ones(self.batch_size, self.n_agents, 1)
+
+    def update_agents(self, action):
+
+        # TODO: agents aren't allowed to occupy the same cells in a grid
+        # (required for multiagent env mode)
+        self.agent_states = torch.clamp(self.agent_states - self.agent_gamma, 0.,1.)
+
+        for bb in range(action.shape[0]):
+            for nn in range(action.shape[1]):
+                
+                if action[bb,nn,0] == 8:
+                    pass
+                    # no eating or movement
+                elif action[bb,nn,0] % 4 == 0:
+                    self.agent_indices[bb,nn,1] -= 1
+                elif action[bb,nn,0] % 4 == 1:
+                    self.agent_indices[bb,nn,0] -= 1
+                elif action[bb,nn,0] % 4 == 2:
+                    self.agent_indices[bb,nn,1] += 1
+                elif action[bb,nn,0] % 4 == 3:
+                    self.agent_indices[bb,nn,0] += 1
+
+                self.agent_indices[bb,nn,:] = self.agent_indices % self.dim
+
+                if action[bb,nn,0] > 4:
+                    # actions 4 through 8 indication grazing movement
+                    xx, yy = self.agent_indices[bb,nn,0], self.agent_indices[bb,nn,1]
+                    self.agent_states[bb,nn,0] += self.grid[bb,1:3,xx,yy].sum()
+                    self.grid[bb,1:3,xx,yy] *= 0.0
+
+
+    def get_obs(self, agent_indices=None):
+
+        obs = torch.zeros(*agent_indices.shape[:2], 3, 3)
+        obs_grid = F.pad(self.grid, (1,1,1,1), mode="circular") 
+
+        for bb in range(obs.shape[0]):
+            for nn in range(obs.shape[1]):
+                x_start = agent_indices[bb,nn,0]
+                y_start = agent_indices[bb,nn,1]
+
+                obs[bb,nn,:,:] = obs_grid[\
+                        bb,nn,x_start:x_start+3, y_start:y_start+3]
+
+        return obs
 
     def initialize_neighborhood(self):
 
@@ -137,6 +195,7 @@ class RLDaisyWorld():
         grid[:,3,:,:] = temp
         self.grid = grid
 
+
     def reset(self):
 
         self.L = self.min_L
@@ -146,8 +205,10 @@ class RLDaisyWorld():
         self.dL = 2 * (self.max_L - self.min_L) / self.ramp_period
         self.initialize_grid()
 
+        obs = self.get_obs(self.agent_indices)
+
     def calculate_growth_rate(self, temp):
-        beta = 1 - self.g*(self.temp_optimal - temp)**2 #, 0,1.)
+        beta = 1 - self.g*(self.temp_optimal - temp)**2 
         self.beta = beta
         return beta
 
@@ -224,11 +285,18 @@ class RLDaisyWorld():
         beta = self.calculate_growth_rate(temp)
         growth = self.calculate_growth(beta, daisy_density)
 
-        new_grid = 1. * grid
+        new_grid = 0. * grid
         grid[:,3,:,:] = temp
         new_grid[:,1:3, :,:] = torch.clamp(grid[:,1:3, :,:] + self.dt * growth, 0,1)
         new_grid[:,0, :,:] = self.p - new_grid[:,1, :,:] - new_grid[:,2,:,:] #.sum(dim=1)
 
+        new_grid = torch.round(new_grid, decimals=3)
+
+        if self.n_agents:
+            for bb in range(self.batch_size):
+                for nn in range(self.n_agents):
+                    xx, yy = self.agent_indices[bb,nn,0], self.agent_indices[bb,nn,1]
+                    new_grid[bb,4,xx,yy] = self.agent_states[bb,nn]
 
         return new_grid
 
@@ -246,10 +314,20 @@ class RLDaisyWorld():
 
     def step(self, action=None):
         
+        if action is None and self.n_agents:
+            action = torch.zeros(self.batch_size, self.n_agents,1)
+
+        if action is not None:
+            self.update_agents(action)
+
         for ii in range(int(1. / self.dt)):
             self.grid = self.forward(self.grid) 
 
-        reward, obs, done, info = 0, self.grid[:,0:3,...], 0, {}
+        obs = self.get_obs(self.agent_indices)
+        reward = 1.0 * self.agent_states.detach()
+        done = reward < 0.1
+
+        done, info = 0, {}
 
         self.L = self.update_L(self.L)
 
@@ -267,6 +345,15 @@ if __name__ == "__main__":
     a = env.grid
 
     b = env.forward(a)
+
+    for ii in range(9):
+        for jj in range(1):
+            action = torch.tensor([[[ii]]]) #randint(9, size=(env.batch_size, env.n_agents, 1))
+            
+            print(env.grid[:,4,:,:])
+
+            env.step(action)
+
 
     print(a.shape, b.shape)
 
