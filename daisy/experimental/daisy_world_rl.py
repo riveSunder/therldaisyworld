@@ -1,4 +1,4 @@
-from autograd import numpy
+import numpy as np
 
 import torch
 import torch.nn as nn
@@ -33,10 +33,17 @@ class RLDaisyWorld():
         self.ddL = 0.
         
         # stellar luminosity R[0.,2.]
-        self.max_L = 1.15
-        self.min_L = 0.7
+        self.max_L = 1.3
+        self.min_L = 0.65
         self.initial_L = self.min_L
-        self.ramp_period = 100 
+        self.ramp_period = 512 
+
+        # seasonal parameters
+        self.use_seasons = True
+        self.use_inclination = True
+        self.amplitude_seasonal = 0.5
+        self.period_seasonal = self.ramp_period // 4
+        self.max_tilt = 0.1
 
         self.albedo_bare = 0.5
         self.albedo_light = 0.75
@@ -51,8 +58,9 @@ class RLDaisyWorld():
         self.light_proportion = 0.33
         self.dark_proportion = 0.33
 
-        self.n_agents = 1
+        self.n_agents = 3
 
+        self.kernel_radius = 5
         self.initialize_neighborhood()
         self.initialize_agents()
         self.reset()
@@ -86,7 +94,7 @@ class RLDaisyWorld():
                 elif action[bb,nn,0] % 4 == 3:
                     self.agent_indices[bb,nn,0] += 1
 
-                self.agent_indices[bb,nn,:] = self.agent_indices % self.dim
+                self.agent_indices[bb,nn,:] = self.agent_indices[bb,nn,:] % self.dim
 
                 if action[bb,nn,0] > 4:
                     # actions 4 through 8 indication grazing movement
@@ -97,7 +105,7 @@ class RLDaisyWorld():
 
     def get_obs(self, agent_indices=None):
 
-        obs = torch.zeros(*agent_indices.shape[:2], 3, 3)
+        obs = torch.zeros(*agent_indices.shape[:2], 5, 3, 3)
         obs_grid = F.pad(self.grid, (1,1,1,1), mode="circular") 
 
         for bb in range(obs.shape[0]):
@@ -105,7 +113,7 @@ class RLDaisyWorld():
                 x_start = agent_indices[bb,nn,0]
                 y_start = agent_indices[bb,nn,1]
 
-                obs[bb,nn,:,:] = obs_grid[\
+                obs[bb,nn,:,:,:] = obs_grid[\
                         bb,nn,x_start:x_start+3, y_start:y_start+3]
 
         return obs
@@ -114,9 +122,20 @@ class RLDaisyWorld():
 
         ## Convolution for daisy density
         # central kernel weight is 0.67, adjacent weights = .37/8
+        x = np.arange(-1,1 + 2/(2*self.kernel_radius) , 2/ (2*self.kernel_radius))
+        xx, yy = np.meshgrid(x, x)
+        rr = xx**2 + yy**2
+
+        gaussian = lambda r: np.exp(-r**2 / 2.) 
         self.n_daisies = 2
-        self.daisy_kernel = torch.ones(1,1,3,3) * 0.0465
-        self.daisy_kernel[:,:,1,1] = 0.67
+        self.daisy_kernel = torch.ones(1,1,2*self.kernel_radius+1,2*self.kernel_radius+1) * gaussian(rr) 
+        self.daisy_kernel[:,:,0,1] *= np.exp(0.5**2) # 0.707 / (4*0.707+2)
+        self.daisy_kernel[:,:,1,0] *= np.exp(0.5**2) # 0.707 / (4*0.707+2)
+        self.daisy_kernel[:,:,1,2] *= np.exp(0.5**2) # 0.707 / (4*0.707+2)
+        self.daisy_kernel[:,:,1,1] *= np.exp(0.5**2) # 0.707 / (4*0.707+2)
+        self.daisy_kernel[:,:,0::,0::] *= np.exp(-.707**2)# / (4*0.707+2)
+        self.daisy_kernel[:,:,1,1] = 1.0
+        self.daisy_kernel /= self.daisy_kernel.sum()
         #self.kernel = self.ch * self.kernel / self.kernel.sum()
         kernel_dim = self.daisy_kernel.shape[-1]
         padding = (kernel_dim - 1) // 2
@@ -133,8 +152,9 @@ class RLDaisyWorld():
         # local and adjacent albedo convs
         self.local_albedo_kernel = torch.zeros(1, 1, 3,3)
         self.local_albedo_kernel[:,:,1,1] = 1.0
-        self.adjacent_albedo_kernel = torch.ones(1, 1, 3,3) \
-                * 1/9. 
+        self.adjacent_albedo_kernel = torch.ones(1,1,2*self.kernel_radius+1,2*self.kernel_radius+1) \
+                * gaussian(rr) #torch.ones(1, 1, 3,3) \
+                #* 1/9. 
         kernel_dim = self.local_albedo_kernel.shape[-1]
         padding = (kernel_dim - 1) // 2
 
@@ -144,7 +164,7 @@ class RLDaisyWorld():
                 bias=False)
 
         self.adjacent_albedo_conv = nn.Conv2d(1, 1,
-                kernel_dim, padding=padding,\
+                self.kernel_radius*2+1, padding=self.kernel_radius,\
                 padding_mode="circular", \
                 bias=False)
 
@@ -199,10 +219,10 @@ class RLDaisyWorld():
     def reset(self):
 
         self.L = self.min_L
-        self.dL = 2 * (self.max_L - self.min_L) / self.ramp_period
+        self.dL =  (self.max_L - self.min_L) / self.ramp_period
 
         self.step_count = 0
-        self.dL = 2 * (self.max_L - self.min_L) / self.ramp_period
+        self.update_inclination()
         self.initialize_grid()
 
         obs = self.get_obs(self.agent_indices)
@@ -260,7 +280,8 @@ class RLDaisyWorld():
         
         # effective radiation temperature
         self.temp_effective = (\
-                (self.S*self.L * (1-A))/self.sigma)**(1/4)
+                (self.S * self.L \
+                * (1-A))/self.sigma)**(1/4)
 
         temp = (self.q*(A - Al) + self.temp_effective**4)**(1/4)
         self.temp = temp
@@ -312,13 +333,37 @@ class RLDaisyWorld():
 
         return max([min([L, self.max_L]), self.min_L])
 
+    def update_inclination(self):
+
+        if self.use_inclination:
+
+            offset = self.max_tilt * np.sin(self.step_count * 2 * np.pi / self.period_seasonal)
+
+            inclination_x = np.arange(-self.amplitude_seasonal + offset, \
+                    self.amplitude_seasonal * (1 + 2/(self.dim-1))+ offset, \
+                    2 * self.amplitude_seasonal / (self.dim-1))
+
+            yy, xx = np.meshgrid(inclination_x, inclination_x)
+
+            xx = torch.tensor(xx, requires_grad=False)**2
+            self.inclination = (1.0 - xx).unsqueeze(0).unsqueeze(0)
+
+            # inclination modifier is adjusted to have mean luminosity 1.0
+            self.inclination /= self.inclination.mean()
+        else:
+
+            self.inclination = torch.ones(1,1,self.dim, self.dim)
+
     def step(self, action=None):
         
         if action is None and self.n_agents:
-            action = torch.zeros(self.batch_size, self.n_agents,1)
+            action = torch.zeros(self.batch_size, self.n_agents, 1)
 
         if action is not None:
-            self.update_agents(action)
+            my_action = torch.zeros(self.batch_size, self.n_agents, 1)
+            my_action[:,:action.shape[1],:] = action
+
+            self.update_agents(my_action)
 
         for ii in range(int(1. / self.dt)):
             self.grid = self.forward(self.grid) 
@@ -326,10 +371,13 @@ class RLDaisyWorld():
         obs = self.get_obs(self.agent_indices)
         reward = 1.0 * self.agent_states.detach()
         done = reward < 0.1
+        global_done = obs[:,:,1:3,:,:].max(dim=2, keepdim=True)[0].max(dim=3, keepdim=True)[0].max(dim=4)[0]
 
         done, info = 0, {}
 
         self.L = self.update_L(self.L)
+        if self.use_seasons:
+            self.update_inclination()
 
         return reward, obs, done, info
 
