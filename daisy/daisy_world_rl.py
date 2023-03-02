@@ -1,51 +1,11 @@
-
 import numpy as np
-
-import torch
-import torch.nn as nn
-import torch.nn.functional as F
 
 import matplotlib.pyplot as plt
 import matplotlib
 
-def pad_to_2d(kernel, dims): 
-                                
-    mid_x = dims[-2] // 2                                                        
-    mid_y = dims[-1] // 2                                                        
-    mid_k_x = kernel.shape[-2] // 2                                              
-    mid_k_y = kernel.shape[-1] // 2                                              
-                                                                                
-    start_x = mid_x - mid_k_x                                                   
-    start_y = mid_y - mid_k_y                                                   
-                                                                                
-    padded = np.zeros(dims)                                                     
-    padded[..., mid_x-mid_k_x:mid_x-mid_k_x + kernel.shape[-2],
-            mid_y-mid_k_y:mid_y-mid_k_y + kernel.shape[-1]] = kernel             
-                                                                                
-    return padded                         
-                                                        
-def ft_convolve(grid, kernel):                                                  
-                                             
-    grid = np.array(grid)
-    kernel = np.array(kernel)
+from daisy.nn.functional import ft_convolve,\
+        pad_to_2d
 
-    grid2 = grid           
-    
-    if np.shape(kernel) != np.shape(grid2):                                     
-        padded_kernel = pad_to_2d(kernel, grid2.shape)                          
-    else:                                                                       
-        padded_kernel = kernel                                                  
-                                                                                
-#    convolved = (np.fft.ifftshift(np.real(np.fft.ifft2(\
-#            np.fft.fft2(np.fft.fftshift(grid2)) \
-#            * np.fft.fft2(np.fft.fftshift(padded_kernel))))))
-    convolved = np.fft.ifftshift(\
-                    np.real(np.fft.ifft2(\
-                        np.fft.fft2(np.fft.fftshift(grid2, axes=(-2,-1)), axes=(-2,-1)) \
-            * np.fft.fft2(np.fft.fftshift(padded_kernel, axes=(-2,-1)), axes=(-2,-1)), axes=(-2,-1)))\
-                , axes=(-2,-1))
-                                                                                
-    return convolved 
 class RLDaisyWorld():
 
     def __init__(self):
@@ -72,8 +32,8 @@ class RLDaisyWorld():
         self.ddL = 0.
         
         # stellar luminosity R[0.,2.]
-        self.max_L = 1.2
-        self.min_L = 0.65
+        self.max_L = 1.15
+        self.min_L = 0.7
         self.initial_L = self.min_L
         self.ramp_period = 256 
 
@@ -98,17 +58,17 @@ class RLDaisyWorld():
 
     def initialize_agents(self):
 
-        self.agent_indices = torch.randint(self.dim, \
+        self.agent_indices = np.random.randint(self.dim, \
                 size=(self.batch_size, self.n_agents, 2))
 
         # the "bellies" of the agents
-        self.agent_states = torch.ones(self.batch_size, self.n_agents, 1)
+        self.agent_states = np.ones((self.batch_size, self.n_agents, 1))
 
     def update_agents(self, action):
 
         # TODO: agents aren't allowed to occupy the same cells in a grid
         # (required for multiagent env mode)
-        self.agent_states = torch.clamp(self.agent_states - self.agent_gamma, 0.,1.)
+        self.agent_states = np.clip(self.agent_states - self.agent_gamma, 0.,1.)
 
         for bb in range(action.shape[0]):
             for nn in range(action.shape[1]):
@@ -136,8 +96,10 @@ class RLDaisyWorld():
 
     def get_obs(self, agent_indices=None):
 
-        obs = torch.zeros(*agent_indices.shape[:2], self.ch, 3, 3)
-        obs_grid = F.pad(self.grid, (1,1,1,1), mode="circular") 
+        obs = np.zeros((*agent_indices.shape[:2], self.ch, 3, 3))
+        pad_dims = (*self.grid.shape[:-2], self.grid.shape[-2] + 2, self.grid.shape[-1] + 2)
+        obs_grid = pad_to_2d(self.grid, dims=pad_dims, mode="circular") 
+
 
         for bb in range(obs.shape[0]):
             for nn in range(obs.shape[1]):
@@ -152,60 +114,32 @@ class RLDaisyWorld():
     def initialize_neighborhood(self):
 
         ## Convolution for daisy density
-        # central kernel weight is 0.67, adjacent weights = .37/8
+        # kernel based on Gaussian
         self.n_daisies = 2
-        self.daisy_kernel = torch.ones(1,1,3,3) * np.exp(-1)
+        self.daisy_kernel = np.ones((1,1,3,3)) * np.exp(-1)
         self.daisy_kernel[:,:,1,1] = 1.0 
         self.daisy_kernel[:,:,0::2, 0::2] = np.exp(-2) 
-        self.daisy_kernel /= self.daisy_kernel.sum() # self.ch * self.kernel / self.kernel.sum()
+        self.daisy_kernel /= self.daisy_kernel.sum() 
         kernel_dim = self.daisy_kernel.shape[-1]
         padding = 0 #(kernel_dim - 1) // 2
 
-        self.daisy_conv = nn.Conv2d(1, 1,\
-                kernel_dim, padding=padding,\
-                padding_mode="reflect", \
-                bias=False)
-
-        for param in self.daisy_conv.named_parameters():
-            param[1].requires_grad = False
-            param[1][:] = self.daisy_kernel
-
         # local and adjacent albedo convs
-        self.local_albedo_kernel = torch.zeros(1, 1, 3,3)
+        self.local_albedo_kernel = np.zeros((1, 1, 3,3))
         self.local_albedo_kernel[:,:,1,1] = 1.0
-        self.adjacent_albedo_kernel = torch.ones(1, 1, 3,3) \
-                * 1/8. 
+        self.adjacent_albedo_kernel = np.ones((1, 1, 3,3)) / 8. 
         self.adjacent_albedo_kernel[:,:,0,0] = 0.
         kernel_dim = self.local_albedo_kernel.shape[-1]
-        padding = 0 #(kernel_dim - 1) // 2
-
-        self.local_albedo_conv = nn.Conv2d(1, 1,
-                kernel_dim, padding=padding,\
-                padding_mode="reflect", \
-                bias=False)
-
-        self.adjacent_albedo_conv = nn.Conv2d(1, 1,
-                kernel_dim, padding=padding,\
-                padding_mode="reflect", \
-                bias=False)
-
-        for param in self.local_albedo_conv.named_parameters():
-            param[1].requires_grad = False
-            param[1][:] = self.local_albedo_kernel
-
-        for param in self.adjacent_albedo_conv.named_parameters():
-            param[1].requires_grad = False
-            param[1][:] = self.adjacent_albedo_kernel
+        padding = 0 
 
     def initialize_grid(self):
 
-        dark_probability = torch.rand(\
+        dark_probability = np.random.rand(\
                 self.batch_size,\
                 2,\
                 self.dim,\
                 self.dim)
 
-        light_probability = torch.rand(\
+        light_probability = np.random.rand(\
                 self.batch_size,\
                 2,\
                 self.dim,\
@@ -216,11 +150,11 @@ class RLDaisyWorld():
         light_daisies = 1.0 * (light_probability[:,0,:,:] < self.light_proportion) \
                 * self.initial_al * light_probability[:,1,:,:] 
 
-        grid =  torch.zeros(\
+        grid =  np.zeros((\
                 self.batch_size,\
                 self.ch,\
                 self.dim,\
-                self.dim)
+                self.dim))
 
         grid[:,0,...] = self.p - light_daisies - dark_daisies
         grid[:,1,...] = light_daisies
@@ -269,7 +203,7 @@ class RLDaisyWorld():
         dl_dt = a_l*(a_b * beta - self.gamma)
         dd_dt = a_d*(a_b * beta - self.gamma)
 
-        growth = torch.zeros_like(daisy_density)
+        growth = np.zeros_like((daisy_density))
         growth[:,0,...] = dl_dt 
         growth[:,1,...] = dd_dt
 
@@ -282,20 +216,15 @@ class RLDaisyWorld():
         # groundcover has 3 channels (bare, light daisies, dark daisies)
 
         groundcover[:,0,...] = self.p - groundcover[:,1,:,:] - groundcover[:,2,:,:] 
-        local_albedo = torch.zeros(1,1,self.dim, self.dim) 
-        adjacent_albedo = torch.zeros(1,1,self.dim, self.dim) 
+        local_albedo = np.zeros((1,1,self.dim, self.dim) )
+        adjacent_albedo = np.zeros((1,1,self.dim, self.dim))
 
         for ii, albedo in enumerate([\
                 self.albedo_bare, self.albedo_light, self.albedo_dark]):
 
             local_albedo += albedo * groundcover[:,ii:ii+1,:,:]
-            #* self.local_albedo_conv(groundcover[:,ii:ii+1,:,:]) 
-#            temp_conv = self.adjacent_albedo_conv(\
-#                    F.pad(groundcover[:,ii:ii+1,:,:], (self.dim,self.dim,self.dim,self.dim),\
-#                    mode="circular"))[:,:,self.dim+1:1+2*self.dim,1+self.dim:1+self.dim*2]
-#            adjacent_albedo += albedo * temp_conv #self.adjacent_albedo_conv(groundcover[:,ii:ii+1,:,:])
-            adjacent_albedo += albedo * torch.tensor(ft_convolve(\
-                    groundcover[:,ii:ii+1,:,:], self.adjacent_albedo_kernel))
+            adjacent_albedo += albedo * ft_convolve(\
+                    groundcover[:,ii:ii+1,:,:], self.adjacent_albedo_kernel)
     
         return local_albedo, adjacent_albedo
 
@@ -321,15 +250,11 @@ class RLDaisyWorld():
 
     def calculate_daisy_density(self, local_daisies):
 
-        daisy_density = torch.zeros(1,2, self.dim, self.dim)
+        daisy_density = np.zeros((1,2, self.dim, self.dim))
 
         for jj in range(self.n_daisies):
-#            temp_conv = self.daisy_conv(F.pad(local_daisies[:,jj:jj+1,:,:],\
-#                    (self.dim,self.dim,self.dim,self.dim), \
-#                    mode="circular"))[:,:,1+self.dim:1+2*self.dim, 1+self.dim:1+2*self.dim]
-#            daisy_density[:,jj:jj+1,:,:] = temp_conv#self.daisy_conv(local_daisies[:,jj:jj+1,:,:])
-            daisy_density[:,jj:jj+1,:,:] = torch.tensor(\
-                    ft_convolve(local_daisies[:,jj:jj+1,:,:], self.daisy_kernel))
+            daisy_density[:,jj:jj+1,:,:] = ft_convolve(local_daisies[:,jj:jj+1,:,:], \
+                    self.daisy_kernel)
 
 
         return daisy_density
@@ -345,10 +270,10 @@ class RLDaisyWorld():
 
         new_grid = 0. * grid
         grid[:,3,:,:] = temp
-        new_grid[:,1:3, :,:] = torch.clamp(grid[:,1:3, :,:] + self.dt * growth, 0,1)
+        new_grid[:,1:3, :,:] = np.clip(grid[:,1:3, :,:] + self.dt * growth, 0,1)
         new_grid[:,0, :,:] = self.p - new_grid[:,1, :,:] - new_grid[:,2,:,:] #.sum(dim=1)
 
-        new_grid = torch.round(new_grid, decimals=3)
+        new_grid = np.round(new_grid, decimals=3)
 
         if self.n_agents:
             for bb in range(self.batch_size):
@@ -373,7 +298,7 @@ class RLDaisyWorld():
     def step(self, action=None):
         
         if action is None and self.n_agents:
-            action = torch.zeros(self.batch_size, self.n_agents,1)
+            action = np.zeros((self.batch_size, self.n_agents,1))
 
         if action is not None:
             self.update_agents(action)
@@ -382,7 +307,7 @@ class RLDaisyWorld():
             self.grid = self.forward(self.grid) 
 
         obs = self.get_obs(self.agent_indices)
-        reward = 1.0 * self.agent_states.detach()
+        reward = 1.0 * self.agent_states
         done = reward < 0.1
 
         done, info = 0, {}
@@ -406,7 +331,7 @@ if __name__ == "__main__":
 
     for ii in range(9):
         for jj in range(1):
-            action = torch.tensor([[[ii]]]) #randint(9, size=(env.batch_size, env.n_agents, 1))
+            action = np.array([[[ii]]]) #randint(9, size=(env.batch_size, env.n_agents, 1))
             
             print(env.grid[:,4,:,:])
 
