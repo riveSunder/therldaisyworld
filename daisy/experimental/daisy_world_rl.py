@@ -41,7 +41,7 @@ class RLDaisyWorld():
         # seasonal parameters
         self.use_seasons = True
         self.use_inclination = True
-        self.amplitude_seasonal = 0.5
+        self.amplitude_seasonal = 0.05
         self.period_seasonal = self.ramp_period // 4
         self.max_tilt = 0.1
 
@@ -122,21 +122,17 @@ class RLDaisyWorld():
 
         ## Convolution for daisy density
         # central kernel weight is 0.67, adjacent weights = .37/8
+        eps  = 1e-5
         x = np.arange(-1,1 + 2/(2*self.kernel_radius) , 2/ (2*self.kernel_radius))
         xx, yy = np.meshgrid(x, x)
         rr = xx**2 + yy**2
 
-        gaussian = lambda r: np.exp(-r**2 / 2.) 
+        gaussian = lambda r: 1.0 #np.exp(-r**2 / 2.) 
+
         self.n_daisies = 2
-        self.daisy_kernel = torch.ones(1,1,2*self.kernel_radius+1,2*self.kernel_radius+1) * gaussian(rr) 
-        self.daisy_kernel[:,:,0,1] *= np.exp(0.5**2) # 0.707 / (4*0.707+2)
-        self.daisy_kernel[:,:,1,0] *= np.exp(0.5**2) # 0.707 / (4*0.707+2)
-        self.daisy_kernel[:,:,1,2] *= np.exp(0.5**2) # 0.707 / (4*0.707+2)
-        self.daisy_kernel[:,:,1,1] *= np.exp(0.5**2) # 0.707 / (4*0.707+2)
-        self.daisy_kernel[:,:,0::,0::] *= np.exp(-.707**2)# / (4*0.707+2)
-        self.daisy_kernel[:,:,1,1] = 1.0
-        self.daisy_kernel /= self.daisy_kernel.sum()
-        #self.kernel = self.ch * self.kernel / self.kernel.sum()
+        self.daisy_kernel = torch.ones(1,1,2*self.kernel_radius+1,2*self.kernel_radius+1) #* gaussian(rr) 
+        self.daisy_kernel /= eps + self.daisy_kernel.sum()
+        #self.daisy_kernel / self.kernel.sum()
         kernel_dim = self.daisy_kernel.shape[-1]
         padding = (kernel_dim - 1) // 2
 
@@ -153,8 +149,10 @@ class RLDaisyWorld():
         self.local_albedo_kernel = torch.zeros(1, 1, 3,3)
         self.local_albedo_kernel[:,:,1,1] = 1.0
         self.adjacent_albedo_kernel = torch.ones(1,1,2*self.kernel_radius+1,2*self.kernel_radius+1) \
-                * gaussian(rr) #torch.ones(1, 1, 3,3) \
-                #* 1/9. 
+                / ((self.kernel_radius*2+1)**2 - 1)
+
+        self.adjacent_albedo_kernel[:,:,self.kernel_radius+1, self.kernel_radius+1] = 0.
+        #self.adjacent_albedo_kernel /= eps + self.adjacent_albedo_kernel.sum()
         kernel_dim = self.local_albedo_kernel.shape[-1]
         padding = (kernel_dim - 1) // 2
 
@@ -224,6 +222,7 @@ class RLDaisyWorld():
         self.step_count = 0
         self.update_inclination()
         self.initialize_grid()
+        self.initialize_neighborhood()
 
         obs = self.get_obs(self.agent_indices)
 
@@ -266,7 +265,7 @@ class RLDaisyWorld():
         for ii, albedo in enumerate([\
                 self.albedo_bare, self.albedo_light, self.albedo_dark]):
 
-            local_albedo += albedo * self.local_albedo_conv(groundcover[:,ii:ii+1,:,:])
+            local_albedo += albedo * groundcover[:,ii:ii+1,:,:]
             adjacent_albedo += albedo * self.adjacent_albedo_conv(groundcover[:,ii:ii+1,:,:])
     
         return local_albedo, adjacent_albedo
@@ -280,7 +279,7 @@ class RLDaisyWorld():
         
         # effective radiation temperature
         self.temp_effective = (\
-                (self.S * self.L \
+                (self.S * self.L * self.inclination\
                 * (1-A))/self.sigma)**(1/4)
 
         temp = (self.q*(A - Al) + self.temp_effective**4)**(1/4)
@@ -339,17 +338,17 @@ class RLDaisyWorld():
 
             offset = self.max_tilt * np.sin(self.step_count * 2 * np.pi / self.period_seasonal)
 
-            inclination_x = np.arange(-self.amplitude_seasonal + offset, \
-                    self.amplitude_seasonal * (1 + 2/(self.dim-1))+ offset, \
-                    2 * self.amplitude_seasonal / (self.dim-1))
+            inclination_x = np.arange(-np.pi + offset, \
+                    np.pi * (1 + 2/(self.dim-1))+ offset, \
+                    2*np.pi / (self.dim-1))
 
             yy, xx = np.meshgrid(inclination_x, inclination_x)
 
-            xx = torch.tensor(xx, requires_grad=False)**2
-            self.inclination = (1.0 - xx).unsqueeze(0).unsqueeze(0)
+            xx =  torch.cos(torch.tensor(xx)) #tensor(xx, requires_grad=False)**2
+            self.inclination = 1.0 + self.amplitude_seasonal * xx #(1.0 - xx).unsqueeze(0).unsqueeze(0)
 
             # inclination modifier is adjusted to have mean luminosity 1.0
-            self.inclination /= self.inclination.mean()
+            #self.inclination /= self.inclination.mean()
         else:
 
             self.inclination = torch.ones(1,1,self.dim, self.dim)
@@ -398,10 +397,8 @@ if __name__ == "__main__":
         for jj in range(1):
             action = torch.tensor([[[ii]]]) #randint(9, size=(env.batch_size, env.n_agents, 1))
             
-            print(env.grid[:,4,:,:])
 
             env.step(action)
 
 
-    print(a.shape, b.shape)
 

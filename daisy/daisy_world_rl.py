@@ -1,4 +1,5 @@
-from autograd import numpy
+
+import numpy as np
 
 import torch
 import torch.nn as nn
@@ -7,6 +8,44 @@ import torch.nn.functional as F
 import matplotlib.pyplot as plt
 import matplotlib
 
+def pad_to_2d(kernel, dims): 
+                                
+    mid_x = dims[-2] // 2                                                        
+    mid_y = dims[-1] // 2                                                        
+    mid_k_x = kernel.shape[-2] // 2                                              
+    mid_k_y = kernel.shape[-1] // 2                                              
+                                                                                
+    start_x = mid_x - mid_k_x                                                   
+    start_y = mid_y - mid_k_y                                                   
+                                                                                
+    padded = np.zeros(dims)                                                     
+    padded[..., mid_x-mid_k_x:mid_x-mid_k_x + kernel.shape[-2],
+            mid_y-mid_k_y:mid_y-mid_k_y + kernel.shape[-1]] = kernel             
+                                                                                
+    return padded                         
+                                                        
+def ft_convolve(grid, kernel):                                                  
+                                             
+    grid = np.array(grid)
+    kernel = np.array(kernel)
+
+    grid2 = grid           
+    
+    if np.shape(kernel) != np.shape(grid2):                                     
+        padded_kernel = pad_to_2d(kernel, grid2.shape)                          
+    else:                                                                       
+        padded_kernel = kernel                                                  
+                                                                                
+#    convolved = (np.fft.ifftshift(np.real(np.fft.ifft2(\
+#            np.fft.fft2(np.fft.fftshift(grid2)) \
+#            * np.fft.fft2(np.fft.fftshift(padded_kernel))))))
+    convolved = np.fft.ifftshift(\
+                    np.real(np.fft.ifft2(\
+                        np.fft.fft2(np.fft.fftshift(grid2, axes=(-2,-1)), axes=(-2,-1)) \
+            * np.fft.fft2(np.fft.fftshift(padded_kernel, axes=(-2,-1)), axes=(-2,-1)), axes=(-2,-1)))\
+                , axes=(-2,-1))
+                                                                                
+    return convolved 
 class RLDaisyWorld():
 
     def __init__(self):
@@ -33,10 +72,10 @@ class RLDaisyWorld():
         self.ddL = 0.
         
         # stellar luminosity R[0.,2.]
-        self.max_L = 1.15
-        self.min_L = 0.7
+        self.max_L = 1.2
+        self.min_L = 0.65
         self.initial_L = self.min_L
-        self.ramp_period = 100 
+        self.ramp_period = 256 
 
         self.albedo_bare = 0.5
         self.albedo_light = 0.75
@@ -97,7 +136,7 @@ class RLDaisyWorld():
 
     def get_obs(self, agent_indices=None):
 
-        obs = torch.zeros(*agent_indices.shape[:2], 3, 3)
+        obs = torch.zeros(*agent_indices.shape[:2], self.ch, 3, 3)
         obs_grid = F.pad(self.grid, (1,1,1,1), mode="circular") 
 
         for bb in range(obs.shape[0]):
@@ -105,8 +144,8 @@ class RLDaisyWorld():
                 x_start = agent_indices[bb,nn,0]
                 y_start = agent_indices[bb,nn,1]
 
-                obs[bb,nn,:,:] = obs_grid[\
-                        bb,nn,x_start:x_start+3, y_start:y_start+3]
+                obs[bb,nn,:,:,:] = obs_grid[\
+                        bb,:,x_start:x_start+3, y_start:y_start+3]
 
         return obs
 
@@ -115,15 +154,16 @@ class RLDaisyWorld():
         ## Convolution for daisy density
         # central kernel weight is 0.67, adjacent weights = .37/8
         self.n_daisies = 2
-        self.daisy_kernel = torch.ones(1,1,3,3) * 0.0465
-        self.daisy_kernel[:,:,1,1] = 0.67
-        #self.kernel = self.ch * self.kernel / self.kernel.sum()
+        self.daisy_kernel = torch.ones(1,1,3,3) * np.exp(-1)
+        self.daisy_kernel[:,:,1,1] = 1.0 
+        self.daisy_kernel[:,:,0::2, 0::2] = np.exp(-2) 
+        self.daisy_kernel /= self.daisy_kernel.sum() # self.ch * self.kernel / self.kernel.sum()
         kernel_dim = self.daisy_kernel.shape[-1]
-        padding = (kernel_dim - 1) // 2
+        padding = 0 #(kernel_dim - 1) // 2
 
         self.daisy_conv = nn.Conv2d(1, 1,\
                 kernel_dim, padding=padding,\
-                padding_mode="circular", \
+                padding_mode="reflect", \
                 bias=False)
 
         for param in self.daisy_conv.named_parameters():
@@ -134,18 +174,19 @@ class RLDaisyWorld():
         self.local_albedo_kernel = torch.zeros(1, 1, 3,3)
         self.local_albedo_kernel[:,:,1,1] = 1.0
         self.adjacent_albedo_kernel = torch.ones(1, 1, 3,3) \
-                * 1/9. 
+                * 1/8. 
+        self.adjacent_albedo_kernel[:,:,0,0] = 0.
         kernel_dim = self.local_albedo_kernel.shape[-1]
-        padding = (kernel_dim - 1) // 2
+        padding = 0 #(kernel_dim - 1) // 2
 
         self.local_albedo_conv = nn.Conv2d(1, 1,
                 kernel_dim, padding=padding,\
-                padding_mode="circular", \
+                padding_mode="reflect", \
                 bias=False)
 
         self.adjacent_albedo_conv = nn.Conv2d(1, 1,
                 kernel_dim, padding=padding,\
-                padding_mode="circular", \
+                padding_mode="reflect", \
                 bias=False)
 
         for param in self.local_albedo_conv.named_parameters():
@@ -202,10 +243,11 @@ class RLDaisyWorld():
         self.dL = 2 * (self.max_L - self.min_L) / self.ramp_period
 
         self.step_count = 0
-        self.dL = 2 * (self.max_L - self.min_L) / self.ramp_period
         self.initialize_grid()
 
         obs = self.get_obs(self.agent_indices)
+
+        return obs
 
     def calculate_growth_rate(self, temp):
         beta = 1 - self.g*(self.temp_optimal - temp)**2 
@@ -246,8 +288,14 @@ class RLDaisyWorld():
         for ii, albedo in enumerate([\
                 self.albedo_bare, self.albedo_light, self.albedo_dark]):
 
-            local_albedo += albedo * self.local_albedo_conv(groundcover[:,ii:ii+1,:,:])
-            adjacent_albedo += albedo * self.adjacent_albedo_conv(groundcover[:,ii:ii+1,:,:])
+            local_albedo += albedo * groundcover[:,ii:ii+1,:,:]
+            #* self.local_albedo_conv(groundcover[:,ii:ii+1,:,:]) 
+#            temp_conv = self.adjacent_albedo_conv(\
+#                    F.pad(groundcover[:,ii:ii+1,:,:], (self.dim,self.dim,self.dim,self.dim),\
+#                    mode="circular"))[:,:,self.dim+1:1+2*self.dim,1+self.dim:1+self.dim*2]
+#            adjacent_albedo += albedo * temp_conv #self.adjacent_albedo_conv(groundcover[:,ii:ii+1,:,:])
+            adjacent_albedo += albedo * torch.tensor(ft_convolve(\
+                    groundcover[:,ii:ii+1,:,:], self.adjacent_albedo_kernel))
     
         return local_albedo, adjacent_albedo
 
@@ -256,11 +304,15 @@ class RLDaisyWorld():
         # local albedo 
         Al = local_albedo
         # neighborhood albedo
-        A = adjacent_albedo
+        A = adjacent_albedo #.mean()
         
         # effective radiation temperature
         self.temp_effective = (\
                 (self.S*self.L * (1-A))/self.sigma)**(1/4)
+
+        dead_effective = (\
+                (self.S * self.L * (1-self.albedo_bare))/self.sigma)**(1/4)
+        self.dead_temp = dead_effective
 
         temp = (self.q*(A - Al) + self.temp_effective**4)**(1/4)
         self.temp = temp
@@ -272,7 +324,13 @@ class RLDaisyWorld():
         daisy_density = torch.zeros(1,2, self.dim, self.dim)
 
         for jj in range(self.n_daisies):
-            daisy_density[:,jj:jj+1,:,:] = self.daisy_conv(local_daisies[:,jj:jj+1,:,:])
+#            temp_conv = self.daisy_conv(F.pad(local_daisies[:,jj:jj+1,:,:],\
+#                    (self.dim,self.dim,self.dim,self.dim), \
+#                    mode="circular"))[:,:,1+self.dim:1+2*self.dim, 1+self.dim:1+2*self.dim]
+#            daisy_density[:,jj:jj+1,:,:] = temp_conv#self.daisy_conv(local_daisies[:,jj:jj+1,:,:])
+            daisy_density[:,jj:jj+1,:,:] = torch.tensor(\
+                    ft_convolve(local_daisies[:,jj:jj+1,:,:], self.daisy_kernel))
+
 
         return daisy_density
 
@@ -331,7 +389,7 @@ class RLDaisyWorld():
 
         self.L = self.update_L(self.L)
 
-        return reward, obs, done, info
+        return obs, reward, done, info
 
     def __call__(self, grid): 
 
