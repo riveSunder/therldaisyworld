@@ -1,4 +1,5 @@
 import numpy as np
+import time
 
 import matplotlib.pyplot as plt
 import matplotlib
@@ -13,7 +14,7 @@ class RLDaisyWorld():
         # channels
         self.ch = 5
         # batch_size 
-        self.batch_size = 1
+        self.batch_size = 4
         # size of the toroidal daisyworld
         self.dim = 8
 
@@ -50,7 +51,7 @@ class RLDaisyWorld():
         self.light_proportion = 0.33
         self.dark_proportion = 0.33
 
-        self.n_agents = 1
+        self.n_agents = 3
 
         self.initialize_neighborhood()
         self.initialize_agents()
@@ -85,7 +86,7 @@ class RLDaisyWorld():
                 elif action[bb,nn,0] % 4 == 3:
                     self.agent_indices[bb,nn,0] += 1
 
-                self.agent_indices[bb,nn,:] = self.agent_indices % self.dim
+                self.agent_indices = self.agent_indices % self.dim
 
                 if action[bb,nn,0] > 4:
                     # actions 4 through 8 indication grazing movement
@@ -167,7 +168,7 @@ class RLDaisyWorld():
         beta = self.calculate_growth_rate(temp)
         growth = self.calculate_growth(beta, daisy_density)
 
-        grid[:,3,:,:] = temp
+        grid[:,3:4,:,:] = temp
         self.grid = grid
 
 
@@ -178,6 +179,7 @@ class RLDaisyWorld():
 
         self.step_count = 0
         self.initialize_grid()
+        self.initialize_agents()
 
         obs = self.get_obs(self.agent_indices)
 
@@ -200,8 +202,8 @@ class RLDaisyWorld():
         # bare ground available for growth 
         a_b = self.p - a_l - a_d 
 
-        dl_dt = a_l*(a_b * beta - self.gamma)
-        dd_dt = a_d*(a_b * beta - self.gamma)
+        dl_dt = a_l*(a_b * beta.squeeze() - self.gamma)
+        dd_dt = a_d*(a_b * beta.squeeze() - self.gamma)
 
         growth = np.zeros_like((daisy_density))
         growth[:,0,...] = dl_dt 
@@ -216,8 +218,10 @@ class RLDaisyWorld():
         # groundcover has 3 channels (bare, light daisies, dark daisies)
 
         groundcover[:,0,...] = self.p - groundcover[:,1,:,:] - groundcover[:,2,:,:] 
-        local_albedo = np.zeros((1,1,self.dim, self.dim) )
-        adjacent_albedo = np.zeros((1,1,self.dim, self.dim))
+        local_albedo = np.zeros(\
+                (self.batch_size,1,self.dim, self.dim) )
+        adjacent_albedo = np.zeros(\
+                (self.batch_size,1,self.dim, self.dim))
 
         for ii, albedo in enumerate([\
                 self.albedo_bare, self.albedo_light, self.albedo_dark]):
@@ -250,7 +254,7 @@ class RLDaisyWorld():
 
     def calculate_daisy_density(self, local_daisies):
 
-        daisy_density = np.zeros((1,2, self.dim, self.dim))
+        daisy_density = np.zeros((self.batch_size,2, self.dim, self.dim))
 
         for jj in range(self.n_daisies):
             daisy_density[:,jj:jj+1,:,:] = ft_convolve(local_daisies[:,jj:jj+1,:,:], \
@@ -269,7 +273,7 @@ class RLDaisyWorld():
         growth = self.calculate_growth(beta, daisy_density)
 
         new_grid = 0. * grid
-        grid[:,3,:,:] = temp
+        grid[:,3:4,:,:] = temp
         new_grid[:,1:3, :,:] = np.clip(grid[:,1:3, :,:] + self.dt * growth, 0,1)
         new_grid[:,0, :,:] = self.p - new_grid[:,1, :,:] - new_grid[:,2,:,:] #.sum(dim=1)
 
@@ -278,6 +282,7 @@ class RLDaisyWorld():
         if self.n_agents:
             for bb in range(self.batch_size):
                 for nn in range(self.n_agents):
+                    
                     xx, yy = self.agent_indices[bb,nn,0], self.agent_indices[bb,nn,1]
                     new_grid[bb,4,xx,yy] = self.agent_states[bb,nn]
 
