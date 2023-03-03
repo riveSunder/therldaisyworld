@@ -314,11 +314,12 @@ class RLDaisyWorld():
             self.grid = self.forward(self.grid) 
 
         obs = self.get_obs(self.agent_indices)
-        reward = 1.0 * self.agent_states
+        reward = 1.0 * self.agent_states \
+                * (0.001 < self.grid[:,1:3].max(axis=(-3,-2,-1))[:,None,None])
+        reward = reward * (reward > 0)
         done = reward < 0.1
 
-        done, info = 0, {}
-
+        info = {}
         self.L = self.update_L(self.L)
 
         return obs, reward, done, info
