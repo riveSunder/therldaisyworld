@@ -3,6 +3,14 @@ import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib
 
+def glorot(dims):
+
+    assert len(dims) == 2
+
+    params = npr.randn(*dims) * np.sqrt(2/ (dims[0]+dims[1]))
+
+    return params
+
 def pad_to_2d(kernel, dims, mode="zeros"): 
                                 
     mid_x = dims[-2] // 2                                                        
