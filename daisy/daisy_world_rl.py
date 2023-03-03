@@ -29,11 +29,11 @@ class RLDaisyWorld():
         self.agent_gamma = 0.05
         self.q = 0.2 * self.S / self.sigma
         self.Toptim = 295.5
-        self.dt = 0.01
+        self.dt = 0.1
         self.ddL = 0.
         
         # stellar luminosity R[0.,2.]
-        self.max_L = 1.15
+        self.max_L = 1.2
         self.min_L = 0.7
         self.initial_L = self.min_L
         self.ramp_period = 256 
@@ -73,26 +73,28 @@ class RLDaisyWorld():
 
         for bb in range(action.shape[0]):
             for nn in range(action.shape[1]):
-                
-                if action[bb,nn,0] == 8:
-                    pass
-                    # no eating or movement
-                elif action[bb,nn,0] % 4 == 0:
-                    self.agent_indices[bb,nn,1] -= 1
-                elif action[bb,nn,0] % 4 == 1:
-                    self.agent_indices[bb,nn,0] -= 1
-                elif action[bb,nn,0] % 4 == 2:
-                    self.agent_indices[bb,nn,1] += 1
-                elif action[bb,nn,0] % 4 == 3:
-                    self.agent_indices[bb,nn,0] += 1
+                # dead agents don't move
+                if self.agent_states[bb,nn] > 0.0:
+                    
+                    if action[bb,nn,0] == 8:
+                        pass
+                        # no eating or movement
+                    elif action[bb,nn,0] % 4 == 0:
+                        self.agent_indices[bb,nn,1] -= 1
+                    elif action[bb,nn,0] % 4 == 1:
+                        self.agent_indices[bb,nn,0] -= 1
+                    elif action[bb,nn,0] % 4 == 2:
+                        self.agent_indices[bb,nn,1] += 1
+                    elif action[bb,nn,0] % 4 == 3:
+                        self.agent_indices[bb,nn,0] += 1
 
-                self.agent_indices = self.agent_indices % self.dim
+                    self.agent_indices = self.agent_indices % self.dim
 
-                if action[bb,nn,0] > 4:
-                    # actions 4 through 8 indication grazing movement
-                    xx, yy = self.agent_indices[bb,nn,0], self.agent_indices[bb,nn,1]
-                    self.agent_states[bb,nn,0] += self.grid[bb,1:3,xx,yy].sum()
-                    self.grid[bb,1:3,xx,yy] *= 0.0
+                    if action[bb,nn,0] > 4:
+                        # actions 4 through 8 indication grazing movement
+                        xx, yy = self.agent_indices[bb,nn,0], self.agent_indices[bb,nn,1]
+                        self.agent_states[bb,nn,0] += self.grid[bb,1:3,xx,yy].sum()
+                        self.grid[bb,1:3,xx,yy] *= 0.0
 
 
     def get_obs(self, agent_indices=None):
