@@ -19,12 +19,14 @@ class Greedy():
 
         masked_daisies = daisy_sum[:,:,self.move_mask] 
 
-        if self.greedy:
-            action_arg = np.argmax(masked_daisies)
-        else:
-            action_arg = np.argmin(masked_daisies)
 
         if np.random.rand() > self.epsilon:
+
+            if self.greedy:
+                action_arg = np.argmax(masked_daisies, axis=-1)
+            else:
+                action_arg = np.argmin(masked_daisies, axis=-1)
+
             action = 4 + action_arg
         else:
             action = np.random.randint(9, size=(*obs.shape[0:2],1,1))
@@ -37,19 +39,22 @@ class Greedy():
 if __name__ == "__main__":
 
     env = RLDaisyWorld()
-    env.max_L = 1.4
+    env.max_L = 1.5
+    env.min_L = 1.4
+    env.ramp_period = 100
+    env.n_agents = 64
     obs = env.reset()
     np.random.seed(42)
 
     agent = Greedy()
 
     greedy_sum = 0.0
-    for ii in range(env.ramp_period):
+    for ii in range(env.ramp_period*3):
         action = agent(obs)
         obs, r, d, i = env.step(action)
         alive = env.grid[:,1:3,:,:].sum()
 
-        greedy_sum += r.item()
+        greedy_sum += r.sum().item()
 
     print(f"greedy alive: {alive:.3f}")
     obs = env.reset()
@@ -58,12 +63,12 @@ if __name__ == "__main__":
     agent.epsilon = 1.0
 
     random_sum = 0.0
-    for ii in range(env.ramp_period):
+    for ii in range(env.ramp_period*3):
         action = agent(obs)
-        obs, r, d, i = env.step(action)
+        obs, r, d, i = env.step(action*0)
         alive = env.grid[:,1:3,:,:].sum()
 
-        random_sum += r.item()
+        random_sum += r.sum().item()
 
     print(f"random alive: {alive:.3f}")
     obs = env.reset()
@@ -71,14 +76,14 @@ if __name__ == "__main__":
     agent = Greedy(greedy=False)
 
     antigreedy_sum = 0.0
-    for ii in range(env.ramp_period):
+    for ii in range(env.ramp_period*3):
         action = agent(obs)
         obs, r, d, i = env.step(action)
         alive = env.grid[:,1:3,:,:].sum()
 
-        random_sum += r.item()
+        random_sum += r.sum().item()
 
-    print(f"ant-greedy alive: {alive:.3f}")
+    print(f"anti-greedy alive: {alive:.3f}")
     print(f"reward in {ii} steps greedy: {greedy_sum:.3f}, "\
             f"anti-greedy: {antigreedy_sum:.3f}, "\
             f"random: {random_sum:.3f}")
