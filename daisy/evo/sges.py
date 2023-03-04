@@ -1,6 +1,10 @@
 import os
 import json
 
+import argparse
+
+import time
+
 import numpy as np
 import numpy.random as npr
 
@@ -30,6 +34,7 @@ class SimpleGaussianES():
         self.lr = 1.e-1
 
         #
+        self.tag = query_kwargs("tag", "default_tag", **kwargs)
         self.entry_point = query_kwargs("entry_point", "None", **kwargs)
         # tournament bracket size
         self.bracket_size = query_kwargs("bracket_size", 5, **kwargs)
@@ -48,6 +53,7 @@ class SimpleGaussianES():
     def make_config(self):
 
         config = {}
+        config["tag"] = self.tag
         config["env_fn"] = self.env.__class__.__name__
         config["elitism"] = self.elitism
         config["batch_size"] = self.batch_size
@@ -64,6 +70,7 @@ class SimpleGaussianES():
 
     def _apply_config(self, config):
 
+        self.tag = config["tag"]
         self.env_fn = self.fn_dict[config["env_fn"]]
         self.elitism = config["elitism"]
         self.batch_size = config["batch_size"] 
@@ -204,25 +211,96 @@ class SimpleGaussianES():
                 self.population[ii].set_parameters(new_parameters)
 
 
-    def run(self, max_generations=10):
+    def run(self, max_generations=10, **kwargs):
 
         number_trials = 4
+
+        checkpoint_every = query_kwargs("checkpoint_every", 1, **kwargs)
+
+        t0 = time.time()
+
+        filepath = os.path.join("results", self.tag, f"{self.tag}_progress.json")
+        filepath_env = os.path.join("results", self.tag, f"{self.tag}_daisyworld.json")
+        filepath_policy = os.path.join("results", self.tag, f"{self.tag}_best_agent.json")
+
+        if os.path.exists(os.path.split(filepath)[0]):
+            pass
+        else:
+            os.mkdir(os.path.split(filepath)[0])
+
+        results = {}
+        results["wall_time"] = []
+        results["generation"] = []
+        results["total_interactions"] = []
+        results["mean_fitness"] = []
+        results["variance_fitness"] = []
+        results["min_fitness"] = []
+        results["max_fitness"] = []
+
+        # total number of interactions with the environment
+        total_interactions = 0
         for generation in range(max_generations):
 
             fitness = []    
+            t1 = time.time()
             for agent_idx in range(self.population_size):
                 fit = 0.0
                 for trial in range(number_trials):
                     adversary_idx = npr.randint(self.population_size)
-                    fit += self.get_fitness(agent_idx=agent_idx,\
-                            adversary_idx=adversary_idx)[0].mean() / number_trials
+                    this_fitness, total_steps = self.get_fitness(agent_idx=agent_idx,\
+                            adversary_idx=adversary_idx)
+
+                    fit += this_fitness.mean() / number_trials
+                    total_interactions += total_steps
 
                 fitness.append(fit)
 
             self.update_population(fitness)
-            print(np.max(fitness), np.min(fitness), \
-                    np.mean(fitness), len(fitness))
 
+            t2 = time.time()
+            results["wall_time"].append(t2-t0)
+            results["generation"].append(generation)
+            results["total_interactions"].append(total_interactions)
+            results["mean_fitness"].append(np.mean(fitness))
+            results["variance_fitness"].append(np.var(fitness))
+            results["min_fitness"].append(np.min(fitness))
+            results["max_fitness"].append(np.max(fitness))
+
+            if generation % checkpoint_every == 0:
+                # save progress
+                elapsed = t2 - t0
+                elapsed_generation = t2 - t1
+
+                msg = f"generation {generation}, {results['wall_time'][-1]:.0f} s elapsed "
+                msg += f"mean fitness +/- std. deviation: {results['mean_fitness'][-1]:.1e} +/- "
+                msg += f"{np.sqrt(results['variance_fitness'][-1]):.1e}, "
+                msg += f"max: {results['max_fitness'][-1]:.1e} "
+                msg += f"min: {results['min_fitness'][-1]:.1e}"
+
+                print(msg)
+
+                with open(filepath, "w") as f:
+                    json.dump(results, f)
+
+                if generation == 0:
+                    self.env.save_config(filepath_env)
+
+                filepath_policy = os.path.join("results", self.tag, \
+                        f"{self.tag}_best_agent_gen{generation}.json")
+                self.population[0].save_config(filepath_policy)
+
+                filepath_numpy_pop =  os.path.join("results", self.tag, \
+                        f"{self.tag}_population_gen{generation}.npy")
+
+                population_params = self.population[0].get_parameters()[None,:]
+
+                for ii in range(1, len(self.population)):
+                    my_params = self.population[ii].get_parameters()[None,:]
+                    population_params = np.append(population_params, my_params) 
+
+                np.save(filepath_numpy_pop, population_params)
+
+ 
     
     def plot_run(self, logs=None):
         pass
@@ -236,8 +314,7 @@ class SimpleGaussianES():
 
 if __name__ == "__main__":
 
-   algo = SimpleGaussianES(population_size=16) 
-   #fit, steps = algo.get_fitness()
-   #print(fit, steps)
 
-   algo.run(max_generations=20)
+    algo = SimpleGaussianES(population_size=16) 
+
+    algo.run(max_generations=3)

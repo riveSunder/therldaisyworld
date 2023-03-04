@@ -1,3 +1,5 @@
+import argparse
+
 import numpy as np
 
 import numpy.random as npr
@@ -90,5 +92,14 @@ class CMAES(SimpleGaussianES):
 
 if __name__ == "__main__":
 
-    evo = CMAES()
+    parser = argparse.ArgumentParser()
+
+    parser.add_argument("-t", "--tag", type=str, default="cmaes_tag",\
+            help="tag for identifying experiment")
+
+    args = parser.parse_args()
+
+    kwargs = dict(args._get_kwargs())
+    evo = CMAES(**kwargs)
     evo.run(max_generations=10)
+
