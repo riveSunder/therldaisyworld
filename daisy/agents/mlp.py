@@ -1,3 +1,6 @@
+import os
+import json
+
 import numpy as np
 import numpy.random as npr
 
@@ -20,7 +23,7 @@ class MLP():
 
         self.initialize_parameters()
 
-    def make_config(self):
+    def make_config(self, include_parameters=True):
 
         config = {}
 
@@ -28,6 +31,9 @@ class MLP():
         config["out_dim"] = self.out_dim
         config["h_dim"] = self.h_dim
         config["act_name"] = self.act_name
+
+        if include_parameters:
+            config["parameters"] = list(self.get_parameters())
 
         return config
 
@@ -40,6 +46,11 @@ class MLP():
         self.h_dim = config["h_dim"] 
         self.act_name = config["act_name"]
         self.act = self.act_dict[self.act_name]
+
+        self.initialize_parameters()
+
+        if "parameters" in config:
+            self.set_parameters(np.array(config["parameters"]))
 
     def save_config(self, filepath=None):
 

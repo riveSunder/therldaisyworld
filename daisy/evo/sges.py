@@ -1,3 +1,6 @@
+import os
+import json
+
 import numpy as np
 import numpy.random as npr
 
@@ -14,6 +17,8 @@ class SimpleGaussianES():
 
     def __init__(self, **kwargs):
         
+        self.fn_dict = {"RLDaisyWorld": RLDaisyWorld,\
+                "MLP": MLP}
         env_fn = RLDaisyWorld 
         self.env = env_fn()
 
@@ -24,6 +29,8 @@ class SimpleGaussianES():
         self.max_steps = 768 #env.ramp_period * 3
         self.lr = 1.e-1
 
+        #
+        self.entry_point = query_kwargs("entry_point", "None", **kwargs)
         # tournament bracket size
         self.bracket_size = query_kwargs("bracket_size", 5, **kwargs)
         self.num_workers = query_kwargs("num_workers", 1, **kwargs)
@@ -37,6 +44,67 @@ class SimpleGaussianES():
         self.agent_args = {"None": None}
 
         self.initialize_population()
+
+    def make_config(self):
+
+        config = {}
+        config["env_fn"] = self.env.__class__.__name__
+        config["elitism"] = self.elitism
+        config["batch_size"] = self.batch_size
+        config["max_steps"] = self.max_steps
+        config["lr"] = self.lr
+        config["entry_point"] = self.entry_point
+        config["bracket_size"] = self.bracket_size
+        config["num_workers"] = self.num_workers
+        config["population_size"] = self.population_size
+        config["keep_elite"] = self.keep_elite
+        config["agent_fn"] = self.population[0].__class__.__name__
+
+        return config
+
+    def _apply_config(self, config):
+
+        self.env_fn = self.fn_dict[config["env_fn"]]
+        self.elitism = config["elitism"]
+        self.batch_size = config["batch_size"] 
+        self.max_steps = config["max_steps"] 
+        self.lr = config["lr"] 
+        self.entry_point = config["entry_point"] 
+        self.bracket_size = config["bracket_size"] 
+        self.num_workers = config["num_workers"] 
+        self.population_size = config["population_size"] 
+        self.keep_elite = config["keep_elite"] 
+        self.agent_fn = self.fn_dict[config["agent_fn"]]
+
+    def save_config(self, filepath=None):
+
+        if filepath is None:
+            filepath = os.path.join("results", "default_exp_config.json")
+
+        config = self.make_config()
+
+        with open(filepath, "w") as f:
+            json.dump(config, f)
+
+
+    def load_config(self, filepath=None):
+
+        if filepath is None:
+            filepath = os.path.join("results", "default_exp_config.json")
+
+        with open(filepath, "r") as f:
+            config = json.load(f)
+
+        return config
+
+    def restore_config(self, filepath=None):
+
+        if filepath is None:
+            filepath = os.path.join("results", "default_exp_config.json")
+
+        config = self.load_config(filepath)
+
+        self._apply_config(config)
 
     def calculate_stats(self, population):
         
