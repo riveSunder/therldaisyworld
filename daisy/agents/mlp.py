@@ -14,9 +14,62 @@ class MLP():
         self.h_dim = [16, 64]
 
         # relu activation
-        self.act = lambda x: x * (x>0.0)
+        self.act_dict = {"relu": lambda x: x * (x>0.0)}
+        self.act_name = "relu"
+        self.act = self.act_dict[self.act_name]
 
         self.initialize_parameters()
+
+    def make_config(self):
+
+        config = {}
+
+        config["in_dim"] = self.in_dim
+        config["out_dim"] = self.out_dim
+        config["h_dim"] = self.h_dim
+        config["act_name"] = self.act_name
+
+        return config
+
+    def _apply_config(self, config):
+        if filepath is None:
+            filepath = os.path.join("results", "default_mlp_config.json")
+
+        self.in_dim = config["in_dim"] 
+        self.out_dim = config["out_dim"] 
+        self.h_dim = config["h_dim"] 
+        self.act_name = config["act_name"]
+        self.act = self.act_dict[self.act_name]
+
+    def save_config(self, filepath=None):
+
+        if filepath is None:
+            filepath = os.path.join("results", "default_mlp_config.json")
+
+        config = self.make_config()
+
+        with open(filepath, "w") as f:
+            json.dump(config, f)
+
+
+    def load_config(self, filepath=None):
+
+        if filepath is None:
+            filepath = os.path.join("results", "default_mlp_config.json")
+
+        with open(filepath, "r") as f:
+            config = json.load(f)
+
+        return config
+
+    def restore_config(self, filepath=None):
+
+        if filepath is None:
+            filepath = os.path.join("results", "default_mlp_config.json")
+
+        config = self.load_config(filepath)
+
+        self._apply_config(config)
 
     def initialize_parameters(self):
         self.layers = []
