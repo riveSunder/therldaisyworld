@@ -1,8 +1,8 @@
 import numpy as np
 import numpy.random as npr
 
-from mpi4py import MPI
-comm = MPI.COMM_WORLD
+#from mpi4py import MPI
+#comm = MPI.COMM_WORLD
 
 from daisy.daisy_world_rl import RLDaisyWorld
 from daisy.agents.greedy import Greedy

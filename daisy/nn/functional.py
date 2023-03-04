@@ -1,9 +1,6 @@
 import numpy as np
 import numpy.random as npr
 
-import matplotlib.pyplot as plt
-import matplotlib
-
 def glorot(dims):
 
     assert len(dims) == 2

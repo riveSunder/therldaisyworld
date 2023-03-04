@@ -1,9 +1,6 @@
 import numpy as np
 import time
 
-import matplotlib.pyplot as plt
-import matplotlib
-
 from daisy.nn.functional import ft_convolve,\
         pad_to_2d
 
