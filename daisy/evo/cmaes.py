@@ -1,9 +1,12 @@
 import argparse
+import os
 
 import numpy as np
 
 import numpy.random as npr
 
+import sys
+import subprocess
 from mpi4py import MPI
 comm = MPI.COMM_WORLD
 
@@ -100,6 +103,8 @@ if __name__ == "__main__":
             help="number of generations to evolve")
     parser.add_argument("-p", "--population_size", type=int, default=16,\
             help="number of individuals in the population")
+    parser.add_argument("-s", "--seeds", type=int, nargs="+", default=[42],\
+            help="seeds for pseudo-random number generator")
     parser.add_argument("-t", "--tag", type=str, default="cmaes_tag",\
             help="tag for identifying experiment")
     parser.add_argument("-w", "--num_workers", type=int, default=0,\
@@ -135,5 +140,5 @@ if __name__ == "__main__":
     kwargs["git_hash"] = git_hash.decode("utf8")[:-1]
 
     evo = CMAES(**kwargs)
-    evo.run(max_generations=10)
+    evo.run(**kwargs)
 

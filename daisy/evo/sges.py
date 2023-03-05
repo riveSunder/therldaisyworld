@@ -38,6 +38,7 @@ class SimpleGaussianES():
 
         #
         self.tag = query_kwargs("tag", "default_tag", **kwargs)
+        self.seeds = query_kwargs("seeds", [42], **kwargs)
         self.entry_point = query_kwargs("entry_point", "None", **kwargs)
         # tournament bracket size
         self.bracket_size = query_kwargs("bracket_size", 5, **kwargs)
@@ -155,8 +156,11 @@ class SimpleGaussianES():
         half_obs = obs.shape[1] // 2
 
         done = False
+        all_done = False
+        done_at = np.zeros((*obs.shape[:2],1), dtype=int)
+
         sum_reward = 0.0
-        while not done and self.env.step_count < self.max_steps:
+        while not all_done and self.env.step_count < self.max_steps:
             
             agent = self.get_agent_action(\
                     obs[:,:half_obs], agent_idx)
@@ -166,20 +170,17 @@ class SimpleGaussianES():
             action = np.append(agent, adversary, axis=1)
 
             obs, reward, done, info = self.env.step(action)
-            done = (np.ones_like(done).sum() - done.sum()) == 0
-#            if done: 
-#                print(f"done t step {self.env.step_count}")
-#                print(self.env.grid[:,1:3].sum(axis=(-3,-2,-1)))
-#                print(reward)
+            all_done = (np.ones_like(done).sum() - done.sum()) == 0
+            done_at += (1 - 1 * done)
 
             sum_reward += (reward[:,:half_obs]).mean()
-            total_steps += 1
+            total_steps += (1 - 1 * done)
 
         sum_rewards.append(sum_reward)
 
         fitness = sum_reward / (obs.shape[0] * obs.shape[1])
 
-        return fitness, total_steps
+        return fitness, total_steps, done_at.tolist()
         
     def update_population(self, fitness):
 
@@ -264,125 +265,143 @@ class SimpleGaussianES():
 
         t0 = time.time()
 
-        filepath = os.path.join("results", self.tag, f"{self.tag}_progress.json")
-        filepath_env = os.path.join("results", self.tag, f"{self.tag}_daisyworld.json")
-        filepath_policy = os.path.join("results", self.tag, f"{self.tag}_best_agent.json")
 
-        if os.path.exists(os.path.split(filepath)[0]):
-            pass
-        else:
-            os.mkdir(os.path.split(filepath)[0])
+        for seed in self.seeds:
+            npr.seed(seed)
 
-        results = {}
-        results["entry_point"] = query_kwargs("entry_point", "None", **kwargs)
-        results["git_hash"] = query_kwargs("git_hash", "None", **kwargs)
-        results["wall_time"] = []
-        results["generation"] = []
-        results["total_interactions"] = []
-        results["mean_fitness"] = []
-        results["variance_fitness"] = []
-        results["min_fitness"] = []
-        results["max_fitness"] = []
+            filepath = os.path.join("results", self.tag, f"{self.tag}_seed{seed}_progress.json")
+            filepath_env = os.path.join("results", self.tag, f"{self.tag}_seed{seed}_daisyworld.json")
+            filepath_policy = os.path.join("results", self.tag, f"{self.tag}_seed{seed}_best_agent.json")
 
-        # total number of interactions with the environment
-        total_interactions = 0
-        for generation in range(max_generations):
+            if os.path.exists(os.path.split(filepath)[0]):
+                pass
+            else:
+                os.mkdir(os.path.split(filepath)[0])
 
-            fitness = []    
-            t1 = time.time()
+            self.initialize_population()
+            results = {}
+            results["seed"] = seed
+            results["done_at"] = []
+            results["entry_point"] = query_kwargs("entry_point", "None", **kwargs)
+            results["git_hash"] = query_kwargs("git_hash", "None", **kwargs)
+            results["wall_time"] = []
+            results["generation"] = []
+            results["total_interactions"] = []
+            results["mean_fitness"] = []
+            results["variance_fitness"] = []
+            results["min_fitness"] = []
+            results["max_fitness"] = []
 
-            if self.num_workers == 0:
-                for agent_idx in range(self.population_size):
-                    fit = 0.0
-                    for trial in range(self.number_trials):
-                        adversary_idx = npr.randint(self.population_size)
-                        this_fitness, total_steps = self.get_fitness(agent_idx=agent_idx,\
-                                adversary_idx=adversary_idx)
 
-                        fit += this_fitness.mean() / self.number_trials
+            # total number of interactions with the environment
+            total_interactions = 0
+            for generation in range(max_generations):
+
+                fitness = []    
+                agents_done_at = []
+                t1 = time.time()
+
+                if self.num_workers == 0:
+                    for agent_idx in range(self.population_size):
+                        fit = 0.0
+                        agent_done_at = []
+                        for trial in range(self.number_trials):
+                            adversary_idx = npr.randint(self.population_size)
+                            this_fitness, total_steps, done_at = self.get_fitness(agent_idx=agent_idx,\
+                                    adversary_idx=adversary_idx)
+
+                            fit += this_fitness.mean() / self.number_trials
+                            total_interactions += total_steps.sum().item()
+                            agent_done_at.extend(done_at)
+
+                        fitness.append(fit)
+                        agents_done_at.append(agent_done_at)
+                else:
+                    subpopulation_size = int(self.population_size / (self.num_workers-1))
+                    population_remainder = self.population_size % (num_worker-1)
+                    population_left = self.population_size
+
+                    batch_end = 0
+                    extras = 0
+
+                    # send parameters to arms
+                    for cc in range(1, self.num_workers):
+                        run_batch_size = min(subpopulation_size, population_left)
+
+                        if population_remainder:
+                            run_batch_size += 1
+                            population_remainder -= 1
+                            extras += 1
+
+                        batch_start = batch_end 
+                        batch_end = batch_start + run_batch_size 
+
+                        parameters_list = [my_agent.get_parameters() \
+                                for my_agent in self.population]
+
+                        agent_indices = [elem for elem in range(batch_start, batch_end)]
+
+                        comm.send((parameters_list, agent_indices), dest=cc)
+
+                    # receive current generation's fitnesses from arm processes
+                    population_left = self.population_size
+                    for dd in range(1, num_worker):
+                        fit, total_steps, agent_done_at = comm.recv(source=dd)
+
+                        fitness.extend(fit)
+
+                        agents_done_at.extend(agent_done_at)
+                        
                         total_interactions += total_steps
 
-                    fitness.append(fit)
-            else:
-                subpopulation_size = int(self.population_size / (self.num_workers-1))
-                population_remainder = self.population_size % (num_worker-1)
-                population_left = self.population_size
+                
+                self.update_population(fitness)
 
-                batch_end = 0
-                extras = 0
+                t2 = time.time()
+                # numpy ndarrays cannot be serialized to json. convert to list first
+                results["done_at"].append(agents_done_at)
+                results["wall_time"].append(t2-t0)
+                results["generation"].append(generation)
+                results["total_interactions"].append(total_interactions)
+                results["mean_fitness"].append(np.mean(fitness))
+                results["variance_fitness"].append(np.var(fitness))
+                results["min_fitness"].append(np.min(fitness))
+                results["max_fitness"].append(np.max(fitness))
 
-                # send parameters to arms
-                for cc in range(1, self.num_workers):
-                    run_batch_size = min(subpopulation_size, population_left)
+                if generation % checkpoint_every == 0 or generation == (max_generations-1):
+                    # save progress
+                    elapsed = t2 - t0
+                    elapsed_generation = t2 - t1
 
-                    if population_remainder:
-                        run_batch_size += 1
-                        population_remainder -= 1
-                        extras += 1
+                    msg = f"generation {generation}, {results['wall_time'][-1]:.0f} s elapsed "
+                    msg += f"mean fitness +/- std. deviation: {results['mean_fitness'][-1]:.1e} +/- "
+                    msg += f"{np.sqrt(results['variance_fitness'][-1]):.1e}, "
+                    msg += f"max: {results['max_fitness'][-1]:.1e} "
+                    msg += f"min: {results['min_fitness'][-1]:.1e}"
 
-                    batch_start = batch_end 
-                    batch_end = batch_start + run_batch_size 
+                    print(msg)
 
-                    parameters_list = [my_agent.get_parameters() \
-                            for my_agent in self.population]
+                    with open(filepath, "w") as f:
+                        json.dump(results, f)
 
-                    agent_indices = [elem for elem in range(batch_start, batch_end)]
+                    if generation == 0:
+                        self.env.save_config(filepath_env)
 
-                    comm.send((parameters_list, agent_indices), dest=cc)
+                    filepath_policy = os.path.join("results", self.tag, \
+                            f"{self.tag}_seed{seed}_best_agent_gen{generation}.json")
 
-                # receive current generation's fitnesses from arm processes
-                population_left = self.population_size
-                for dd in range(1, num_worker):
-                    fit, total_steps = comm.recv(source=dd)
+                    self.population[0].save_config(filepath_policy)
 
-                    fitness.extend(fit)
-                    
-                    total_interactions += total_steps
+                    filepath_numpy_pop =  os.path.join("results", self.tag, \
+                            f"{self.tag}_seed{seed}_population_gen{generation}.npy")
 
-            self.update_population(fitness)
+                    population_params = self.population[0].get_parameters()[None,:]
 
-            t2 = time.time()
-            results["wall_time"].append(t2-t0)
-            results["generation"].append(generation)
-            results["total_interactions"].append(total_interactions)
-            results["mean_fitness"].append(np.mean(fitness))
-            results["variance_fitness"].append(np.var(fitness))
-            results["min_fitness"].append(np.min(fitness))
-            results["max_fitness"].append(np.max(fitness))
+                    for ii in range(1, len(self.population)):
+                        my_params = self.population[ii].get_parameters()[None,:]
+                        population_params = np.append(population_params, my_params) 
 
-            if generation % checkpoint_every == 0:
-                # save progress
-                elapsed = t2 - t0
-                elapsed_generation = t2 - t1
-
-                msg = f"generation {generation}, {results['wall_time'][-1]:.0f} s elapsed "
-                msg += f"mean fitness +/- std. deviation: {results['mean_fitness'][-1]:.1e} +/- "
-                msg += f"{np.sqrt(results['variance_fitness'][-1]):.1e}, "
-                msg += f"max: {results['max_fitness'][-1]:.1e} "
-                msg += f"min: {results['min_fitness'][-1]:.1e}"
-
-                print(msg)
-
-                with open(filepath, "w") as f:
-                    json.dump(results, f)
-
-                if generation == 0:
-                    self.env.save_config(filepath_env)
-
-                filepath_policy = os.path.join("results", self.tag, \
-                        f"{self.tag}_best_agent_gen{generation}.json")
-                self.population[0].save_config(filepath_policy)
-
-                filepath_numpy_pop =  os.path.join("results", self.tag, \
-                        f"{self.tag}_population_gen{generation}.npy")
-
-                population_params = self.population[0].get_parameters()[None,:]
-
-                for ii in range(1, len(self.population)):
-                    my_params = self.population[ii].get_parameters()[None,:]
-                    population_params = np.append(population_params, my_params) 
-
-                np.save(filepath_numpy_pop, population_params)
+                    np.save(filepath_numpy_pop, population_params)
 
         for ee in range(1, self.num_workers):
             print(f"send shutown signal to worker {ee}")
@@ -404,20 +423,24 @@ class SimpleGaussianES():
                 
 
             fitness = []
+            agents_done_at = []
             total_interactions = 0
             for agent_idx in agent_indices:
                 fit = 0.0
+                agent_done_at = []
                 for trial in range(self.number_trials):
                     adversary_idx = npr.randint(self.population_size)
-                    this_fitness, total_steps = self.get_fitness(agent_idx=agent_idx,\
+                    this_fitness, total_steps, done_at = self.get_fitness(agent_idx=agent_idx,\
                             adversary_idx=adversary_idx)
 
                     fit += this_fitness.mean() / self.number_trials
-                    total_interactions += total_steps
+                    total_interactions += total_steps.sum().item()
+                    agent_done_at.extend(done_at)
 
                 fitness.append(fit)
+                agents_done_at.append(agent_done_at)
 
-            comm.send((fitness, total_interactions), dest=0)
+            comm.send((fitness, total_interactions, agents_done_at), dest=0)
  
     
     def plot_run(self, logs=None):
@@ -435,10 +458,14 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser()
 
+    parser.add_argument("-c", "--checkpoint_every", type=int, default=16,\
+            help="saving checkpoint every so often")
     parser.add_argument("-g", "--max_generations", type=int, default=16,\
             help="number of generations to evolve")
     parser.add_argument("-p", "--population_size", type=int, default=16,\
             help="number of individuals in the population")
+    parser.add_argument("-s", "--seeds", type=int, nargs="+", default=[42],\
+            help="seeds for pseudo-random number generator")
     parser.add_argument("-t", "--tag", type=str, default="cmaes_tag",\
             help="tag for identifying experiment")
     parser.add_argument("-w", "--num_workers", type=int, default=0,\
