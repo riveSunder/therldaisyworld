@@ -14,7 +14,7 @@ class MLP():
 
         self.in_dim = 45
         self.out_dim = 9
-        self.h_dim = [16, 64]
+        self.h_dim = [16, 32]
 
         # relu activation
         self.act_dict = {"relu": lambda x: x * (x>0.0)}

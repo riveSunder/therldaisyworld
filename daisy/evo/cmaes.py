@@ -94,8 +94,13 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser()
 
+
+    parser.add_argument("-p", "--population_size", type=int, default=16,\
+            help="number of individuals in the population")
     parser.add_argument("-t", "--tag", type=str, default="cmaes_tag",\
             help="tag for identifying experiment")
+    parser.add_argument("-w", "--num_workers", type=int, default=0,\
+            help="number of workers (arm processes), not including mantle process")
 
     args = parser.parse_args()
 

@@ -8,8 +8,10 @@ import time
 import numpy as np
 import numpy.random as npr
 
-#from mpi4py import MPI
-#comm = MPI.COMM_WORLD
+import sys
+import subprocess
+from mpi4py import MPI
+comm = MPI.COMM_WORLD
 
 from daisy.daisy_world_rl import RLDaisyWorld
 from daisy.agents.greedy import Greedy
@@ -32,13 +34,14 @@ class SimpleGaussianES():
         self.batch_size = self.env.batch_size
         self.max_steps = 768 #env.ramp_period * 3
         self.lr = 1.e-1
+        self.number_trials = 4
 
         #
         self.tag = query_kwargs("tag", "default_tag", **kwargs)
         self.entry_point = query_kwargs("entry_point", "None", **kwargs)
         # tournament bracket size
         self.bracket_size = query_kwargs("bracket_size", 5, **kwargs)
-        self.num_workers = query_kwargs("num_workers", 1, **kwargs)
+        self.num_workers = query_kwargs("num_workers", 0, **kwargs)
 
         self.population_size = query_kwargs("population_size", \
                 16, **kwargs)
@@ -211,11 +214,53 @@ class SimpleGaussianES():
                 self.population[ii].set_parameters(new_parameters)
 
 
+
+    def mpi_fork(self):
+        """
+        relaunches the current script with workers
+        Returns "parent" for original parent, "child" for MPI children
+        (from https://github.com/garymcintire/mpi_util/)
+        via https://github.com/google/brain-tokyo-workshop/tree/master/WANNRelease
+        """
+        global num_worker, rank
+
+        if self.num_workers <= 1:
+            print("if n<=1")
+            num_worker = 0
+            rank = 0
+            return "child"
+
+        if os.getenv("IN_MPI") is None:
+            env = os.environ.copy()
+            env.update(\
+                    MKL_NUM_THREADS="1", \
+                    OMP_NUM_THREAdS="1",\
+                    IN_MPI="1",\
+                    )
+            print( ["mpirun", "-np", str(self.num_workers), sys.executable] + sys.argv)
+            subprocess.check_call(["mpirun", "-np", str(self.num_workers), sys.executable] \
+            +['-u']+ sys.argv, env=env)
+
+            return "parent"
+        else:
+            num_worker = comm.Get_size()
+            rank = comm.Get_rank()
+            return "child"
+
     def run(self, max_generations=10, **kwargs):
 
-        number_trials = 4
+        if self.mpi_fork() == "parent":
+            os._exit(0)
+
+        if rank == 0:
+            self.mantle(**kwargs)
+        else:
+            self.arm(**kwargs)
+
+    def mantle(self, **kwargs):
 
         checkpoint_every = query_kwargs("checkpoint_every", 1, **kwargs)
+        max_generations = query_kwargs("max_generations", 3, **kwargs)
 
         t0 = time.time()
 
@@ -243,17 +288,54 @@ class SimpleGaussianES():
 
             fitness = []    
             t1 = time.time()
-            for agent_idx in range(self.population_size):
-                fit = 0.0
-                for trial in range(number_trials):
-                    adversary_idx = npr.randint(self.population_size)
-                    this_fitness, total_steps = self.get_fitness(agent_idx=agent_idx,\
-                            adversary_idx=adversary_idx)
 
-                    fit += this_fitness.mean() / number_trials
+            if self.num_workers == 0:
+                for agent_idx in range(self.population_size):
+                    fit = 0.0
+                    for trial in range(self.number_trials):
+                        adversary_idx = npr.randint(self.population_size)
+                        this_fitness, total_steps = self.get_fitness(agent_idx=agent_idx,\
+                                adversary_idx=adversary_idx)
+
+                        fit += this_fitness.mean() / self.number_trials
+                        total_interactions += total_steps
+
+                    fitness.append(fit)
+            else:
+                subpopulation_size = int(self.population_size / (self.num_workers-1))
+                population_remainder = self.population_size % (num_worker-1)
+                population_left = self.population_size
+
+                batch_end = 0
+                extras = 0
+
+                # send parameters to arms
+                for cc in range(1, self.num_workers):
+                    run_batch_size = min(subpopulation_size, population_left)
+
+                    if population_remainder:
+                        run_batch_size += 1
+                        population_remainder -= 1
+                        extras += 1
+
+                    batch_start = batch_end 
+                    batch_end = batch_start + run_batch_size 
+
+                    parameters_list = [my_agent.get_parameters() \
+                            for my_agent in self.population]
+
+                    agent_indices = [elem for elem in range(batch_start, batch_end)]
+
+                    comm.send((parameters_list, agent_indices), dest=cc)
+
+                # receive current generation's fitnesses from arm processes
+                population_left = self.population_size
+                for dd in range(1, num_worker):
+                    fit, total_steps = comm.recv(source=dd)
+
+                    fitness.extend(fit)
+                    
                     total_interactions += total_steps
-
-                fitness.append(fit)
 
             self.update_population(fitness)
 
@@ -300,6 +382,40 @@ class SimpleGaussianES():
 
                 np.save(filepath_numpy_pop, population_params)
 
+        for ee in range(1, self.num_workers):
+            print(f"send shutown signal to worker {ee}")
+            comm.send((0, 0), dest=ee)
+
+    def arm(self, **kwargs):
+
+        while True:
+
+            parameters_list, agent_indices = comm.recv(source=0)
+            if parameters_list == 0:
+                print(f"worker {rank} shutting down")
+                break
+
+            self.population_size = len(parameters_list)
+
+            for ff in range(self.population_size):
+                self.population[ff].set_parameters(parameters_list[ff])
+                
+
+            fitness = []
+            total_interactions = 0
+            for agent_idx in agent_indices:
+                fit = 0.0
+                for trial in range(self.number_trials):
+                    adversary_idx = npr.randint(self.population_size)
+                    this_fitness, total_steps = self.get_fitness(agent_idx=agent_idx,\
+                            adversary_idx=adversary_idx)
+
+                    fit += this_fitness.mean() / self.number_trials
+                    total_interactions += total_steps
+
+                fitness.append(fit)
+
+            comm.send((fitness, total_interactions), dest=0)
  
     
     def plot_run(self, logs=None):
@@ -315,6 +431,18 @@ class SimpleGaussianES():
 if __name__ == "__main__":
 
 
-    algo = SimpleGaussianES(population_size=16) 
+    parser = argparse.ArgumentParser()
 
-    algo.run(max_generations=3)
+    parser.add_argument("-p", "--population_size", type=int, default=16,\
+            help="number of individuals in the population")
+    parser.add_argument("-t", "--tag", type=str, default="cmaes_tag",\
+            help="tag for identifying experiment")
+    parser.add_argument("-w", "--num_workers", type=int, default=0,\
+            help="number of workers (arm processes), not including mantle process")
+
+    args = parser.parse_args()
+
+    kwargs = dict(args._get_kwargs())
+
+    evo = SimpleGaussianES(**kwargs) 
+    evo.run(**kwargs)
