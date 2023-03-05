@@ -247,7 +247,7 @@ class SimpleGaussianES():
             rank = comm.Get_rank()
             return "child"
 
-    def run(self, max_generations=10, **kwargs):
+    def run(self, **kwargs):
 
         if self.mpi_fork() == "parent":
             os._exit(0)
@@ -433,6 +433,8 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser()
 
+    parser.add_argument("-g", "--max_generations", type=int, default=16,\
+            help="number of generations to evolve")
     parser.add_argument("-p", "--population_size", type=int, default=16,\
             help="number of individuals in the population")
     parser.add_argument("-t", "--tag", type=str, default="cmaes_tag",\

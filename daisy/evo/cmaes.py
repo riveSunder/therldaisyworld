@@ -32,7 +32,8 @@ class CMAES(SimpleGaussianES):
                         member.get_parameters()[None,:], axis=0)
 
             my_mean = np.mean(pop_params, axis=0, keepdims=True)
-            my_covariance = np.matmul((my_mean - self.mean).T, (my_mean-self.mean))
+            my_covariance = (1. / pop_params.shape[0]) \
+                    * np.matmul((pop_params - self.mean).T, (pop_params-self.mean))
 
         else:
 
@@ -95,6 +96,8 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
 
 
+    parser.add_argument("-g", "--max_generations", type=int, default=16,\
+            help="number of generations to evolve")
     parser.add_argument("-p", "--population_size", type=int, default=16,\
             help="number of individuals in the population")
     parser.add_argument("-t", "--tag", type=str, default="cmaes_tag",\
