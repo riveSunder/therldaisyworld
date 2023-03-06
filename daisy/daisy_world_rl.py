@@ -1,3 +1,7 @@
+import os
+
+import json
+
 import numpy as np
 import time
 
@@ -11,7 +15,7 @@ class RLDaisyWorld():
         # channels
         self.ch = 5
         # batch_size 
-        self.batch_size = 4
+        self.batch_size = 32
         # size of the toroidal daisyworld
         self.dim = 8
 
@@ -21,7 +25,7 @@ class RLDaisyWorld():
         self.S = 1000.0
         # Stefan-Boltzmann constant
         self.sigma = 5.67e-8
-        self.gamma = 0.05
+        self.gamma = 0.25
         # starvation/food depletion for agents
         self.agent_gamma = 0.05
         self.q = 0.2 * self.S / self.sigma
@@ -30,10 +34,10 @@ class RLDaisyWorld():
         self.ddL = 0.
         
         # stellar luminosity R[0.,2.]
-        self.max_L = 1.2
-        self.min_L = 0.7
+        self.max_L = 1.3
+        self.min_L = 0.75
         self.initial_L = self.min_L
-        self.ramp_period = 256 
+        self.ramp_period = 512 
 
         self.albedo_bare = 0.5
         self.albedo_light = 0.75
@@ -48,11 +52,91 @@ class RLDaisyWorld():
         self.light_proportion = 0.33
         self.dark_proportion = 0.33
 
-        self.n_agents = 3
+        self.n_agents = 4
 
         self.initialize_neighborhood()
         self.initialize_agents()
         self.reset()
+
+
+    def make_config(self):
+
+        config = {}
+
+        config["max_L"] = self.max_L
+        config["min_L"] = self.min_L
+        config["initial_L"] = self.initial_L
+        config["ramp_period"] = self.ramp_period
+        config["dL"] = self.dL
+        config["p"] = self.p
+        config["g"] = self.g
+        config["S"] = self.S
+        config["sigma"] = self.sigma
+        config["gamma"] = self.gamma
+        config["albedo_bare"] = self.albedo_bare
+        config["albedo_light"] = self.albedo_light
+        config["albedo_dark"] = self.albedo_dark
+        config["temp_optimal"] = self.temp_optimal
+        config["light_proportion"] = self.light_proportion
+        config["dark_proportion"] = self.dark_proportion
+        config["initial_al"] = self.initial_al
+        config["initial_ad"] = self.initial_ad
+        config["n_agents"] = self.n_agents
+        config["agent_gamma"] = self.agent_gamma
+
+        return config
+
+    def save_config(self, filepath=None):
+
+        if filepath is None:
+            filepath = os.path.join("results", "default_model_config.json")
+
+        config = self.make_config()
+
+        with open(filepath, "w") as f:
+            json.dump(config, f)
+
+    def _apply_config(self, config):
+
+        self.max_L = config["max_L"]
+        self.min_L = config["min_L"]
+        self.initial_L = config["initial_L"]
+        self.ramp_period = config["ramp_period"]
+        self.dL = config["dL"]
+        self.p = config["p"]
+        self.g = config["g"]
+        self.S = config["S"]
+        self.sigma = config["sigma"]
+        self.gamma = config["gamma"]
+        self.albedo_bare = config["albedo_bare"]
+        self.albedo_light = config["albedo_light"]
+        self.albedo_dark = config["albedo_dark"]
+        self.temp_optimal = config["temp_optimal"]
+        self.light_proportion = config["light_proportion"]
+        self.dark_proportion = config["dark_proportion"]
+        self.initial_al = config["initial_al"]
+        self.initial_ad = config["initial_ad"]
+        self.n_agents = config["n_agents"]
+        self.agent_gamma = config["agent_gamma"]
+
+    def load_config(self, filepath=None):
+
+        if filepath is None:
+            filepath = os.path.join("results", "default_model_config.json")
+
+        with open(filepath, "r") as f:
+            config = json.load(f)
+
+        return config
+
+    def restore_config(self, filepath=None):
+
+        if filepath is None:
+            filepath = os.path.join("results", "default_model_config.json")
+
+        config = self.load_config(filepath)
+
+        self._apply_config(config)
 
     def initialize_agents(self):
 
@@ -77,20 +161,27 @@ class RLDaisyWorld():
                         pass
                         # no eating or movement
                     elif action[bb,nn,0] % 4 == 0:
+                        """
+                        - 0 -
+                        1 8 2
+                        - 3 -
+                        """
                         self.agent_indices[bb,nn,1] -= 1
                     elif action[bb,nn,0] % 4 == 1:
                         self.agent_indices[bb,nn,0] -= 1
                     elif action[bb,nn,0] % 4 == 2:
-                        self.agent_indices[bb,nn,1] += 1
-                    elif action[bb,nn,0] % 4 == 3:
                         self.agent_indices[bb,nn,0] += 1
+                    elif action[bb,nn,0] % 4 == 3:
+                        self.agent_indices[bb,nn,1] += 1
 
                     self.agent_indices = self.agent_indices % self.dim
 
                     if action[bb,nn,0] > 4:
                         # actions 4 through 8 indication grazing movement
+
                         xx, yy = self.agent_indices[bb,nn,0], self.agent_indices[bb,nn,1]
                         self.agent_states[bb,nn,0] += self.grid[bb,1:3,xx,yy].sum()
+                        
                         self.grid[bb,1:3,xx,yy] *= 0.0
 
 
@@ -174,7 +265,7 @@ class RLDaisyWorld():
     def reset(self):
 
         self.L = self.min_L
-        self.dL = 2 * (self.max_L - self.min_L) / self.ramp_period
+        self.dL = (self.max_L - self.min_L) / self.ramp_period
 
         self.step_count = 0
         self.initialize_grid()
@@ -244,7 +335,7 @@ class RLDaisyWorld():
 
         dead_effective = (\
                 (self.S * self.L * (1-self.albedo_bare))/self.sigma)**(1/4)
-        self.dead_temp = dead_effective
+        self.dead_temp = np.array([dead_effective])
 
         temp = (self.q*(A - Al) + self.temp_effective**4)**(1/4)
         self.temp = temp

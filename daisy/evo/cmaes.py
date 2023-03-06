@@ -1,7 +1,12 @@
+import argparse
+import os
+
 import numpy as np
 
 import numpy.random as npr
 
+import sys
+import subprocess
 from mpi4py import MPI
 comm = MPI.COMM_WORLD
 
@@ -30,7 +35,8 @@ class CMAES(SimpleGaussianES):
                         member.get_parameters()[None,:], axis=0)
 
             my_mean = np.mean(pop_params, axis=0, keepdims=True)
-            my_covariance = np.matmul((my_mean - self.mean).T, (my_mean-self.mean))
+            my_covariance = (1. / pop_params.shape[0]) \
+                    * np.matmul((pop_params - self.mean).T, (pop_params-self.mean))
 
         else:
 
@@ -90,5 +96,49 @@ class CMAES(SimpleGaussianES):
 
 if __name__ == "__main__":
 
-    evo = CMAES()
-    evo.run(max_generations=10)
+    parser = argparse.ArgumentParser()
+
+
+    parser.add_argument("-g", "--max_generations", type=int, default=16,\
+            help="number of generations to evolve")
+    parser.add_argument("-p", "--population_size", type=int, default=16,\
+            help="number of individuals in the population")
+    parser.add_argument("-s", "--seeds", type=int, nargs="+", default=[42],\
+            help="seeds for pseudo-random number generator")
+    parser.add_argument("-t", "--tag", type=str, default="cmaes_tag",\
+            help="tag for identifying experiment")
+    parser.add_argument("-w", "--num_workers", type=int, default=0,\
+            help="number of workers (arm processes), not including mantle process")
+
+    args = parser.parse_args()
+
+    kwargs = dict(args._get_kwargs())
+
+    hash_command = ["git", "rev-parse", "--verify", "HEAD"]
+    git_hash = subprocess.check_output(hash_command)
+
+    # store the command-line call for this experiment
+    entry_point = []
+    entry_point.append(os.path.split(sys.argv[0])[1])
+    args_list = sys.argv[1:]
+
+    sorted_args = []
+    for aa in range(0, len(args_list)):
+
+        if "-" in args_list[aa]:
+            sorted_args.append([args_list[aa]])
+        else: 
+            sorted_args[-1].append(args_list[aa])
+
+    sorted_args.sort()
+    entry_point = "python -m daisy.evo.cmaes"
+
+    for elem in sorted_args:
+        entry_point += " " + " ".join(elem)
+
+    kwargs["entry_point"] = entry_point 
+    kwargs["git_hash"] = git_hash.decode("utf8")[:-1]
+
+    evo = CMAES(**kwargs)
+    evo.run(**kwargs)
+
