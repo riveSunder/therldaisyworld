@@ -15,7 +15,7 @@ class RLDaisyWorld():
         # channels
         self.ch = 5
         # batch_size 
-        self.batch_size = 4
+        self.batch_size = 32
         # size of the toroidal daisyworld
         self.dim = 8
 
@@ -25,7 +25,7 @@ class RLDaisyWorld():
         self.S = 1000.0
         # Stefan-Boltzmann constant
         self.sigma = 5.67e-8
-        self.gamma = 0.05
+        self.gamma = 0.25
         # starvation/food depletion for agents
         self.agent_gamma = 0.05
         self.q = 0.2 * self.S / self.sigma
@@ -34,10 +34,10 @@ class RLDaisyWorld():
         self.ddL = 0.
         
         # stellar luminosity R[0.,2.]
-        self.max_L = 1.2
-        self.min_L = 0.7
+        self.max_L = 1.3
+        self.min_L = 0.75
         self.initial_L = self.min_L
-        self.ramp_period = 256 
+        self.ramp_period = 512 
 
         self.albedo_bare = 0.5
         self.albedo_light = 0.75
@@ -52,7 +52,7 @@ class RLDaisyWorld():
         self.light_proportion = 0.33
         self.dark_proportion = 0.33
 
-        self.n_agents = 3
+        self.n_agents = 4
 
         self.initialize_neighborhood()
         self.initialize_agents()
@@ -161,20 +161,27 @@ class RLDaisyWorld():
                         pass
                         # no eating or movement
                     elif action[bb,nn,0] % 4 == 0:
+                        """
+                        - 0 -
+                        1 8 2
+                        - 3 -
+                        """
                         self.agent_indices[bb,nn,1] -= 1
                     elif action[bb,nn,0] % 4 == 1:
                         self.agent_indices[bb,nn,0] -= 1
                     elif action[bb,nn,0] % 4 == 2:
-                        self.agent_indices[bb,nn,1] += 1
-                    elif action[bb,nn,0] % 4 == 3:
                         self.agent_indices[bb,nn,0] += 1
+                    elif action[bb,nn,0] % 4 == 3:
+                        self.agent_indices[bb,nn,1] += 1
 
                     self.agent_indices = self.agent_indices % self.dim
 
                     if action[bb,nn,0] > 4:
                         # actions 4 through 8 indication grazing movement
+
                         xx, yy = self.agent_indices[bb,nn,0], self.agent_indices[bb,nn,1]
                         self.agent_states[bb,nn,0] += self.grid[bb,1:3,xx,yy].sum()
+                        
                         self.grid[bb,1:3,xx,yy] *= 0.0
 
 
@@ -258,7 +265,7 @@ class RLDaisyWorld():
     def reset(self):
 
         self.L = self.min_L
-        self.dL = 2 * (self.max_L - self.min_L) / self.ramp_period
+        self.dL = (self.max_L - self.min_L) / self.ramp_period
 
         self.step_count = 0
         self.initialize_grid()
@@ -328,7 +335,7 @@ class RLDaisyWorld():
 
         dead_effective = (\
                 (self.S * self.L * (1-self.albedo_bare))/self.sigma)**(1/4)
-        self.dead_temp = dead_effective
+        self.dead_temp = np.array([dead_effective])
 
         temp = (self.q*(A - Al) + self.temp_effective**4)**(1/4)
         self.temp = temp
