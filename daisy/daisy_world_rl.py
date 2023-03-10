@@ -26,13 +26,20 @@ class RLDaisyWorld():
         # Stefan-Boltzmann constant
         self.sigma = 5.67e-8
         self.gamma = 0.25
-        # starvation/food depletion for agents
-        self.agent_gamma = 0.05
         self.q = 0.2 * self.S / self.sigma
-        self.q2 = self.q / 8.
+        self.use_microclimate = True
+
+        if self.use_microclimate:
+            self.q2 = self.q / 8.
+        else:
+            self.q2 = 0.0
+
         self.Toptim = 295.5
         self.dt = 0.05
         self.ddL = 0.
+        # starvation/food depletion for agents
+        self.agent_gamma = 0.05
+        
         
         # stellar luminosity R[0.,2.]
         self.max_L = 1.5
@@ -59,6 +66,14 @@ class RLDaisyWorld():
         self.initialize_agents()
         self.reset()
 
+    def set_use_microclimate(self, use_microclimate=True):
+
+        self.use_microclimate = use_microclimate
+
+        if self.use_microclimate:
+            self.q2 = self.q / 8.
+        else:
+            self.q2 = 0.0
 
     def make_config(self):
 
