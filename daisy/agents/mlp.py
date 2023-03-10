@@ -12,7 +12,7 @@ from daisy.nn.functional import glorot
 class MLP():
     def __init__(self, **kwargs):
 
-        self.in_dim = 45
+        self.in_dim = 63 #45
         self.out_dim = 9
         self.h_dim = [16, 32]
 
