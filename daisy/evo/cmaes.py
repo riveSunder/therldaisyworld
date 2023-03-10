@@ -99,6 +99,10 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
 
 
+    parser.add_argument("-c", "--checkpoint_every", type=int, default=16,\
+            help="saving checkpoint every so often")
+    parser.add_argument("-d", "--grid_dimension", type=int, default=16,\
+            help="length of each side for daisyworld grid")
     parser.add_argument("-g", "--max_generations", type=int, default=16,\
             help="number of generations to evolve")
     parser.add_argument("-p", "--population_size", type=int, default=16,\

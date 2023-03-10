@@ -10,14 +10,15 @@ from daisy.nn.functional import ft_convolve,\
 
 class RLDaisyWorld():
 
-    def __init__(self):
+    def __init__(self, **kwargs):
 
         # channels
         self.ch = 7
         # batch_size 
         self.batch_size = 32
         # size of the toroidal daisyworld
-        self.dim = 16
+
+        self.dim = kwargs["grid_dimension"] if "grid_dimension" in kwargs.keys() else 16
 
         # model parameters
         self.p = 1.00 #1.0

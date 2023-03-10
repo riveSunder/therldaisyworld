@@ -26,7 +26,7 @@ class SimpleGaussianES():
         self.fn_dict = {"RLDaisyWorld": RLDaisyWorld,\
                 "MLP": MLP}
         env_fn = RLDaisyWorld 
-        self.env = env_fn()
+        self.env = env_fn(**kwargs)
 
         self.elitism = True
         self.champions = None
@@ -460,6 +460,8 @@ if __name__ == "__main__":
 
     parser.add_argument("-c", "--checkpoint_every", type=int, default=16,\
             help="saving checkpoint every so often")
+    parser.add_argument("-d", "--grid_dimension", type=int, default=16,\
+            help="length of each side for daisyworld grid")
     parser.add_argument("-g", "--max_generations", type=int, default=16,\
             help="number of generations to evolve")
     parser.add_argument("-p", "--population_size", type=int, default=16,\
