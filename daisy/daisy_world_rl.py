@@ -38,6 +38,7 @@ class RLDaisyWorld():
         self.min_L = 0.75
         self.initial_L = self.min_L
         self.ramp_period = 512 
+        self.ramp_up_down = False
 
         self.albedo_bare = 0.5
         self.albedo_light = 0.75
@@ -381,7 +382,7 @@ class RLDaisyWorld():
     def update_L(self, L):
     
         self.step_count += 1
-        if self.step_count % self.ramp_period == 0:
+        if self.ramp_up_down and self.step_count % self.ramp_period == 0:
             self.dL *= -1
             self.min_L -= self.ddL
             self.max_L += self.ddL
