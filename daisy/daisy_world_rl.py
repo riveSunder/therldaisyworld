@@ -13,11 +13,11 @@ class RLDaisyWorld():
     def __init__(self):
 
         # channels
-        self.ch = 5
+        self.ch = 7
         # batch_size 
         self.batch_size = 32
         # size of the toroidal daisyworld
-        self.dim = 8
+        self.dim = 16
 
         # model parameters
         self.p = 1.00 #1.0
@@ -29,12 +29,13 @@ class RLDaisyWorld():
         # starvation/food depletion for agents
         self.agent_gamma = 0.05
         self.q = 0.2 * self.S / self.sigma
+        self.q2 = self.q / 8.
         self.Toptim = 295.5
-        self.dt = 0.1
+        self.dt = 0.05
         self.ddL = 0.
         
         # stellar luminosity R[0.,2.]
-        self.max_L = 1.3
+        self.max_L = 1.5
         self.min_L = 0.75
         self.initial_L = self.min_L
         self.ramp_period = 512 
@@ -254,9 +255,9 @@ class RLDaisyWorld():
         local_albedo, adjacent_albedo = self.calculate_albedo(grid[:,:3,:,:])
         daisy_density = self.calculate_daisy_density(grid[:,1:3,:,:])
 
-        temp = self.calculate_temperature(local_albedo, adjacent_albedo)
-        beta = self.calculate_growth_rate(temp)
-        growth = self.calculate_growth(beta, daisy_density)
+        temp, temp_l, temp_d = self.calculate_temperature(local_albedo, adjacent_albedo)
+        beta, beta_l, beta_d = self.calculate_growth_rate(temp, temp_l, temp_d)
+        growth = self.calculate_growth(beta, beta_l, beta_d, daisy_density)
 
         grid[:,3:4,:,:] = temp
         self.grid = grid
@@ -275,12 +276,17 @@ class RLDaisyWorld():
 
         return obs
 
-    def calculate_growth_rate(self, temp):
-        beta = 1 - self.g*(self.temp_optimal - temp)**2 
-        self.beta = beta
-        return beta
+    def calculate_growth_rate(self, temp, temp_l, temp_d):
 
-    def calculate_growth(self, beta, daisy_density):
+        beta = 1 - self.g*(self.temp_optimal - temp)**2 
+        beta_l = 1 - self.g*(self.temp_optimal - temp_l)**2 
+        beta_d = 1 - self.g*(self.temp_optimal - temp_d)**2 
+        self.beta = beta
+        self.beta_l = beta_l
+        self.beta_d = beta_d
+        return beta, beta_l, beta_d
+
+    def calculate_growth(self, beta, beta_l, beta_d, daisy_density):
         """
         """
 
@@ -292,8 +298,12 @@ class RLDaisyWorld():
         # bare ground available for growth 
         a_b = self.p - a_l - a_d 
 
-        dl_dt = a_l*(a_b * beta.squeeze() - self.gamma)
-        dd_dt = a_d*(a_b * beta.squeeze() - self.gamma)
+        if (0):
+            dl_dt = a_l*(a_b * beta.squeeze() - self.gamma)
+            dd_dt = a_d*(a_b * beta.squeeze() - self.gamma)
+        else:
+            dl_dt = a_l*(a_b * beta_l.squeeze() - self.gamma)
+            dd_dt = a_d*(a_b * beta_d.squeeze() - self.gamma)
 
         growth = np.zeros_like((daisy_density))
         growth[:,0,...] = dl_dt 
@@ -335,12 +345,19 @@ class RLDaisyWorld():
 
         dead_effective = (\
                 (self.S * self.L * (1-self.albedo_bare))/self.sigma)**(1/4)
-        self.dead_temp = np.array([dead_effective])
 
         temp = (self.q*(A - Al) + self.temp_effective**4)**(1/4)
-        self.temp = temp
 
-        return temp
+        light_temp = (self.q2 * (Al - self.albedo_light) + temp**4)**(1/4) 
+        dark_temp = (self.q2 * (Al - self.albedo_dark) + temp**4)**(1/4) 
+
+        self.temp = temp
+        self.dead_temp = np.array([dead_effective])
+
+        self.temp_light = light_temp
+        self.temp_dark = dark_temp
+
+        return temp, light_temp, dark_temp
 
     def calculate_daisy_density(self, local_daisies):
 
@@ -358,12 +375,14 @@ class RLDaisyWorld():
         local_albedo, adjacent_albedo = self.calculate_albedo(grid[:,:3,:,:])
         daisy_density = self.calculate_daisy_density(grid[:,1:3,:,:])
 
-        temp = self.calculate_temperature(local_albedo, adjacent_albedo)
-        beta = self.calculate_growth_rate(temp)
-        growth = self.calculate_growth(beta, daisy_density)
+        temp, temp_light, temp_dark = self.calculate_temperature(local_albedo, adjacent_albedo)
+        beta, beta_l, beta_d = self.calculate_growth_rate(temp, temp_light, temp_dark)
+        growth = self.calculate_growth(beta, beta_l, beta_d, daisy_density)
 
         new_grid = 0. * grid
         grid[:,3:4,:,:] = temp
+        grid[:,4:5,:,:] = temp_light
+        grid[:,5:6,:,:] = temp_dark
         new_grid[:,1:3, :,:] = np.clip(grid[:,1:3, :,:] + self.dt * growth, 0,1)
         new_grid[:,0, :,:] = self.p - new_grid[:,1, :,:] - new_grid[:,2,:,:] #.sum(dim=1)
 
