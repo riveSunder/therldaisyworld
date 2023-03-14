@@ -36,7 +36,7 @@ class RLDaisyWorld():
             self.q2 = 0.0
 
         self.Toptim = 295.5
-        self.dt = 0.05
+        self.dt = 1.0
         self.ddL = 0.
         # starvation/food depletion for agents
         self.agent_gamma = 0.05
@@ -434,8 +434,7 @@ class RLDaisyWorld():
         if action is not None:
             self.update_agents(action)
 
-        for ii in range(int(1. / self.dt)):
-            self.grid = self.forward(self.grid) 
+        self.grid = self.forward(self.grid) 
 
         obs = self.get_obs(self.agent_indices)
         if self.n_agents:
