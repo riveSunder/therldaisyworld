@@ -135,7 +135,7 @@ class SimpleDaisyWorld():
         if show_habitable:
             pm_range = np.sqrt(1 / self.g)
 
-            my_x = [0, max(self.list_steps)]
+            my_x = [0, max(self.list_steps)//2]
             upper = self.Toptim + pm_range
             lower = self.Toptim - pm_range
 
@@ -147,7 +147,7 @@ class SimpleDaisyWorld():
                     label="habitable range")
 
         labels = [line.get_label() for line in lines]
-        ax[1].legend(lines, labels, loc=2)
+        ax[1].legend(lines, labels, loc=4)
         ax[0].plot(self.list_steps, self.list_ab, "-.", \
                 color=self.my_cmap(0), label="black daisies", lw=5, alpha=0.5)
         ax[0].plot(self.list_steps, self.list_aw, "--", \
@@ -156,6 +156,12 @@ class SimpleDaisyWorld():
 
         ax[1].set_xlim(0, max(self.list_steps))
         ax[0].set_xlim(0, max(self.list_steps))
+
+        ax[0].set_ylabel("Land Area Proportion")
+        ax[1].set_xlabel("Simulation Step")
+        ax[1].set_ylabel("Stellar Luminosity")
+        ax2.set_ylabel("Temperature (K)")
+        ax[0].set_xticklabels("")
 
 
 
