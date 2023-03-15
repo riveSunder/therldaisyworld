@@ -9,7 +9,7 @@ class Greedy():
         self.epsilon = kwargs["epsilon"] if "epsilon" in kwargs.keys() else 0.0
         self.greedy = kwargs["greedy"] if "greedy" in kwargs.keys() else True
 
-        self.move_mask = np.array([[[1,3,5,7]]])
+        self.move_mask = np.array([[[3,1,7,5]]])
 
     def __call__(self, obs):
 
