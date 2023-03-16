@@ -59,11 +59,15 @@ def plot_grid(env):
     # albedo
     subplot_0 = ax[0,0].imshow(albedo, cmap="gray", interpolation="nearest",
                               vmin=0, vmax=1.0)
+    ax[0,0].set_title("Daisies \n R: Bare G: Light B: Dark")
     # temp
     subplot_1 = ax[0,1].imshow(temp, cmap="afmhot", interpolation="nearest",\
                               vmin=250, vmax=350)
+    ax[0,1].set_title("Temperature")
     subplot_5 = ax[2,0].imshow(growth[:,:,0], cmap="magma", vmin=-0.1, vmax=0.3)
     subplot_6 = ax[2,1].imshow(growth[:,:,1], cmap="magma", vmin=-0.1, vmax=0.3)
+    ax[2,0].set_title("Agents + light growth")
+    ax[2,1].set_title("Dark daisy growth")
     
     # mean temp
     upper = [elem1 + elem2 for elem1, elem2 in zip(mean_temp, std_temp)]
@@ -74,6 +78,8 @@ def plot_grid(env):
     subplot_2c, = ax[1,0].plot(x, dead_temp, "-.", alpha=0.5, label="lifeless temp")
     subplot_2b, = ax2.plot(luminosity, "--", label="stellar luminosity")
     subplot_2b_axis = ax2.axis([0, len(upper), 0.5, 1.5])
+    ax[1,0].set_title("L(--), Temp (-),\n lifeless temp (-.)")
+    ax[1,1].set_title("Daisy populations")
     
     # habitable range
     t_range = np.sqrt(1 / 0.003265)
@@ -240,7 +246,7 @@ def get_update_fig(env, agent=None):
         subplot_4.axes.set_xlim(0, len(x)) 
         
         if agent is not None:
-            subplot_5.set_array(agent_grid) #growth[:,:,0])
+            subplot_5.set_array(agent_grid+growth[:,:,0])
             action = agent(obs) #np.random.randint(4,8, size=(env.batch_size, env.n_agents, 1))
         else:
             subplot_5.set_array(growth[:,:,0])
