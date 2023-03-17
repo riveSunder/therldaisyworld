@@ -27,29 +27,29 @@ Variations of Daisyworld in 2-dimensions have been implemented in several previo
 
 When daisies have the same albedo as bare ground DaisyWorld temperature depends on solar forcing, following the same temperature as a lifeless world. In this scenario daisies can only grow for a short period when temperature resides in the habitable range.  
 
-![Neutral daisies](assets/greedy_demo_neutral_albedo_daisies_no_agent.gif")
+![Neutral daisies](assets/greedy_demo_neutral_albedo_daisies_no_agent.gif)
 
 When daisies are lighter (albedo 0.75) and darker (albedo 0.25), they affect the local and global temperature by reflecting more or less stellar radiation than bare ground. The collective effect maintains DaisyWorld temperature in the habitable range earlier and longer than a lifeless world. 
 
-![Light and dark daisies](assets/greedy_demo_light_and_dark_daisies_no_agent.gif")
+![Light and dark daisies](assets/greedy_demo_light_and_dark_daisies_no_agent.gif)
 
 ## Greedy agents decrease the habitable lifespan of DaisyWorld
 
 A greedy agent always consumes the cell in the agent's Von Neumann neighborhood with the most daisies. This exploitative strategy decreases the habitable lifespan of DaisyWorld, with the unsurprising consequence that agent lifespan is decreased as well. 
 
-![Greedy agent DaisyWorld](assets/greedy_demo_light_and_dark_daisies_greedy_agent.gif")
+![Greedy agent DaisyWorld](assets/greedy_demo_light_and_dark_daisies_greedy_agent.gif)
 
 An anti-greedy agent always consumes the neighboring cell with the lowest concentration of daisies. Anti-greedy agents decrease DaisyWorld habitability as well, but not as much as Greedy agents. 
 
-![Anti-greedy agent DaisyWorld](assets/greedy_demo_light_and_dark_daisies_antigreedy_agent.gif")
+![Anti-greedy agent DaisyWorld](assets/greedy_demo_light_and_dark_daisies_antigreedy_agent.gif)
 
 A random agent is less disruptive than either greedy or anti-greedy agents. This is probably because grazing increases daisy growth in nearby cells.
 
-![random agent DW](assets/greedy_demo_light_and_dark_daisies_random_agent.gif")
+![random agent DW](assets/greedy_demo_light_and_dark_daisies_random_agent.gif)
 
 The following summary figure shows the mean lifespans for agents and biosphere. Simulations covered greedy, anti-greedy, random, and half-greedy/half-random strategies, with 1000 simulations for each condition. For this limited set of strategies, DaisyWorld simulations without agents experienced the longest periods with temperatures in the habitable range. A random strategy had slightly shorter habitable periods on average than an anti-greedy strategy, but random agents survived longer. 
 
-![random agent DW](assets/biosphere_longevity.png")
+![random agent DW](assets/biosphere_longevity.png)
 
 ```
 # error bars are standard deviation / sqrt(number of simulations), i.e an estimate of standard error
@@ -75,7 +75,7 @@ no_light_and_dark mean lifespan: 489.000 +/- 0.000
 ```
 
 With neutral albedo daisies the lifespan of the biosphere is much shorter. Greedy and anti-greedy strategies don't seem to truncate the habitable period in this scenario, but the agent longevity is decreased relative to random or half-random strategies. 
-![random agent DW](assets/neutral_biosphere_longevity.png")
+![random agent DW](assets/neutral_biosphere_longevity.png)
 
 ## Quick start
 
