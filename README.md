@@ -2,6 +2,7 @@
 
 Exploring existential risk in a complex self-regulating ecosystem model. 
 
+
 ## Watson and Lovelock's 1983 daisyworld
 
 Daisyworld [1] is a simple mathematical model designed by Andrew Watson and James Lovelock to demonstrate global regulation of the temperatue on a toy planet without centralized control. In Daisyworld, light and dark daisies affect their own local temperature via a slightly higher or lower albedo than the bare ground or each other. Each type of daisy has the same optimal temperature for growth, and dark daisies absorb more while light daisies reflect more solar energy. Increasing solar radiation is the forcing function in Daisyworld. 
@@ -12,6 +13,10 @@ The combined effect of light and dark daisies keeps Daisyworld in the habitable 
 
 [1] A. J. Watson and J. E. Lovelock, “Biological homeostasis of the global environment: the parable of Daisyworld,” Tellus B, vol. 35B, no. 4, pp. 284–289, Sep. 1983, doi: 10.1111/j.1600-0889.1983.tb00031.x.
 
+### Testing 
+
+TOTAL                                        334     80    76%
+ [coverage.txt](coverage.txt)
 ## RLDaisyWorld: a 2D Daisyworld with daisy-grazing agents
 
 The RL DaisyWorld is a reinforcement learning environment in the spirit of the original Watson/Lovelock model. RLDaisyWorld is implemented as a continuously-valued cellular automaton on a 2D grid with toroidal topology. The environment introduces agency and an RL API for agents to interact with the environment through rewards, observations, and actions. Agents must maintain an internal state above a survival threshold, and they do so by moving into a grid cell with daisies and adding the total daisy proportion in that cell to their own state, in other words by "grazing" daisies. The agent state is passed to the agent as a reward at each time step. 

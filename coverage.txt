@@ -1,0 +1,12 @@
+Name                                       Stmts   Miss  Cover
+--------------------------------------------------------------
+daisy/__init__.py                              0      0   100%
+daisy/daisy_world_rl.py                      277     76    73%
+daisy/nn/__init__.py                           0      0   100%
+daisy/nn/functional.py                        33      4    88%
+daisy/tests/__init__.py                        0      0   100%
+daisy/tests/daisy/__init__.py                  0      0   100%
+daisy/tests/daisy/test_daisy_world_rl.py      20      0   100%
+daisy/tests/test_all.py                        4      0   100%
+--------------------------------------------------------------
+TOTAL                                        334     80    76%
