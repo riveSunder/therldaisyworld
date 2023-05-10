@@ -4,7 +4,7 @@ import os
 
 def test_commit(message=None, dry_run=False): #pragma: no cover
 
-    run_tests_command = "coverage run -m daisy.tests.test_all"
+    run_tests_command = "coverage run -m tests.test_all"
     make_report_command = "coverage report > temp_coverage.txt"
 
     print(f"running on command line: \n  {run_tests_command}")
