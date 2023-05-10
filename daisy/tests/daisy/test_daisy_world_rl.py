@@ -9,7 +9,7 @@ class TestRLDaisyWorld(unittest.TestCase):
     def setUp(self):
         pass
 
-    def test_ad_hoc(self):
+    def test_rl_daisy_world_ad_hoc(self):
 
         env = RLDaisyWorld()
 
