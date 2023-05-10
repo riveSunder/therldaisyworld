@@ -17,6 +17,9 @@ def test_commit(message=None, dry_run=False): #pragma: no cover
             if "TOTAL" in line:
                 summary = line
 
+                while "\n" in summary:
+                    idx = summary.find("\n")
+                    summary = summary[:idx] + summary[idx+1:]
 
     git_add_command = "git add coverage.txt README.md"
     commit_command = f"git commit -m 'test commit summary: {summary}' "
