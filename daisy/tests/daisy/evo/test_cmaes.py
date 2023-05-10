@@ -7,7 +7,7 @@ import unittest
 import numpy as np
 
 from daisy.evo.cmaes import CMAES
-
+from daisy.agents.mlp import MLP
 
 class TestCMAES(unittest.TestCase):
 
@@ -29,6 +29,7 @@ class TestCMAES(unittest.TestCase):
         kwargs["num_workers"] = 0
         kwargs["max_steps"] = 10
         kwargs["batch_size"] = 4
+        kwargs["agent_fn"] = MLP 
 
         hash_command = ["git", "rev-parse", "--verify", "HEAD"]
         git_hash = subprocess.check_output(hash_command)
@@ -57,7 +58,6 @@ class TestCMAES(unittest.TestCase):
 
         evo = CMAES(**kwargs)
         evo.run(**kwargs)
-
         self.assertTrue(True)
 
 if __name__ == "__main__": #pragma: no cover
