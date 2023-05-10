@@ -38,7 +38,7 @@ def test_commit(message=None, dry_run=False): #pragma: no cover
         with open("README.md", "r") as f:
             for line in f.readlines():
                 if "TOTAL" in line:
-                    readme_lines.append(f"{summary} [coverage.txt](coverage.txt)")
+                    readme_lines.append(f"{summary} [coverage.txt](coverage.txt) \n")
                 else: 
                     readme_lines.append(line)
 
