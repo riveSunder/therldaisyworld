@@ -15,8 +15,8 @@ The combined effect of light and dark daisies keeps Daisyworld in the habitable 
 
 ### Testing 
 
-TOTAL                                        334     80    76%
- [coverage.txt](coverage.txt)
+TOTAL                                        907    371    59%
+ [coverage.txt](coverage.txt) [coverage.txt](coverage.txt)
 ## RLDaisyWorld: a 2D Daisyworld with daisy-grazing agents
 
 The RL DaisyWorld is a reinforcement learning environment in the spirit of the original Watson/Lovelock model. RLDaisyWorld is implemented as a continuously-valued cellular automaton on a 2D grid with toroidal topology. The environment introduces agency and an RL API for agents to interact with the environment through rewards, observations, and actions. Agents must maintain an internal state above a survival threshold, and they do so by moving into a grid cell with daisies and adding the total daisy proportion in that cell to their own state, in other words by "grazing" daisies. The agent state is passed to the agent as a reward at each time step. 

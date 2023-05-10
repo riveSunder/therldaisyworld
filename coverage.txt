@@ -1,12 +1,21 @@
 Name                                       Stmts   Miss  Cover
 --------------------------------------------------------------
 daisy/__init__.py                              0      0   100%
+daisy/agents/__init__.py                       0      0   100%
+daisy/agents/greedy.py                        55     49    11%
+daisy/agents/mlp.py                          106     51    52%
 daisy/daisy_world_rl.py                      277     76    73%
+daisy/evo/__init__.py                          0      0   100%
+daisy/evo/cmaes.py                            45      1    98%
+daisy/evo/sges.py                            278    143    49%
+daisy/helpers.py                               5      0   100%
 daisy/nn/__init__.py                           0      0   100%
-daisy/nn/functional.py                        33      4    88%
+daisy/nn/functional.py                        33      1    97%
 daisy/tests/__init__.py                        0      0   100%
 daisy/tests/daisy/__init__.py                  0      0   100%
-daisy/tests/daisy/test_daisy_world_rl.py      20      0   100%
-daisy/tests/test_all.py                        4      0   100%
+daisy/tests/daisy/evo/test_cmaes.py           41      5    88%
+daisy/tests/daisy/evo/test_sges.py            41     31    24%
+daisy/tests/daisy/test_daisy_world_rl.py      20     14    30%
+daisy/tests/test_all.py                        6      0   100%
 --------------------------------------------------------------
-TOTAL                                        334     80    76%
+TOTAL                                        907    371    59%
