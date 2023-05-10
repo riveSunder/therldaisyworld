@@ -36,7 +36,6 @@ class SimpleGaussianES():
         self.lr = 1.e-1
         self.number_trials = 4
 
-        #
         self.tag = query_kwargs("tag", "default_tag", **kwargs)
         self.seeds = query_kwargs("seeds", [42], **kwargs)
         self.entry_point = query_kwargs("entry_point", "None", **kwargs)
@@ -147,7 +146,6 @@ class SimpleGaussianES():
         fitness = []
         sum_rewards = []
         total_steps = 0
-        #self.env.ramp_period = 128
 
         self.population[agent_idx].reset()
 
