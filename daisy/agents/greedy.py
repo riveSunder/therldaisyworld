@@ -36,7 +36,7 @@ class Greedy():
         return action
 
 
-if __name__ == "__main__":
+if __name__ == "__main__": #pragma: no cover
 
     env = RLDaisyWorld()
     env.max_L = 1.5

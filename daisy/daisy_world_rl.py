@@ -46,7 +46,7 @@ class RLDaisyWorld():
         self.max_L = 1.5
         self.min_L = 0.75
         self.initial_L = self.min_L
-        self.ramp_period = 512 
+        self.ramp_period = kwargs["ramp_period"] if "ramp_period" in kwargs.keys() else 512 
         self.ramp_up_down = False
 
         self.albedo_bare = 0.5

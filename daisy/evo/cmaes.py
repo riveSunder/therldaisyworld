@@ -94,7 +94,7 @@ class CMAES(SimpleGaussianES):
                 self.population[ii].set_parameters(new_parameters)
 
 
-if __name__ == "__main__":
+if __name__ == "__main__": #pragma: no cover
 
     parser = argparse.ArgumentParser()
 

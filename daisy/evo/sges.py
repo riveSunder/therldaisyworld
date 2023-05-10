@@ -32,11 +32,10 @@ class SimpleGaussianES():
         self.champions = None
         self.leaderboard = None
         self.batch_size = self.env.batch_size
-        self.max_steps = 768 #env.ramp_period * 3
+        self.max_steps = kwargs["max_steps"] if "max_steps" in kwargs.keys() else 768
         self.lr = 1.e-1
         self.number_trials = 4
 
-        #
         self.tag = query_kwargs("tag", "default_tag", **kwargs)
         self.seeds = query_kwargs("seeds", [42], **kwargs)
         self.entry_point = query_kwargs("entry_point", "None", **kwargs)
@@ -147,7 +146,6 @@ class SimpleGaussianES():
         fitness = []
         sum_rewards = []
         total_steps = 0
-        self.env.ramp_period = 128
 
         self.population[agent_idx].reset()
 
@@ -260,7 +258,7 @@ class SimpleGaussianES():
 
     def mantle(self, **kwargs):
 
-        checkpoint_every = query_kwargs("checkpoint_every", 1, **kwargs)
+        checkpoint_every = query_kwargs("checkpoint_every", 0, **kwargs)
         max_generations = query_kwargs("max_generations", 3, **kwargs)
 
         t0 = time.time()
@@ -301,7 +299,7 @@ class SimpleGaussianES():
                 agents_done_at = []
                 t1 = time.time()
 
-                if self.num_workers == 0:
+                if self.num_workers <= 1:
                     for agent_idx in range(self.population_size):
                         fit = 0.0
                         agent_done_at = []
@@ -368,40 +366,42 @@ class SimpleGaussianES():
                 results["min_fitness"].append(np.min(fitness))
                 results["max_fitness"].append(np.max(fitness))
 
-                if generation % checkpoint_every == 0 or generation == (max_generations-1):
-                    # save progress
-                    elapsed = t2 - t0
-                    elapsed_generation = t2 - t1
+                # don't save anything if checkpoint_every is 0
+                if checkpoint_every:
+                    if generation % checkpoint_every == 0 or generation == (max_generations-1):
+                        # save progress
+                        elapsed = t2 - t0
+                        elapsed_generation = t2 - t1
 
-                    msg = f"generation {generation}, {results['wall_time'][-1]:.0f} s elapsed "
-                    msg += f"mean fitness +/- std. deviation: {results['mean_fitness'][-1]:.1e} +/- "
-                    msg += f"{np.sqrt(results['variance_fitness'][-1]):.1e}, "
-                    msg += f"max: {results['max_fitness'][-1]:.1e} "
-                    msg += f"min: {results['min_fitness'][-1]:.1e}"
+                        msg = f"generation {generation}, {results['wall_time'][-1]:.0f} s elapsed "
+                        msg += f"mean fitness +/- std. deviation: {results['mean_fitness'][-1]:.1e} +/- "
+                        msg += f"{np.sqrt(results['variance_fitness'][-1]):.1e}, "
+                        msg += f"max: {results['max_fitness'][-1]:.1e} "
+                        msg += f"min: {results['min_fitness'][-1]:.1e}"
 
-                    print(msg)
+                        print(msg)
 
-                    with open(filepath, "w") as f:
-                        json.dump(results, f)
+                        with open(filepath, "w") as f:
+                            json.dump(results, f)
 
-                    if generation == 0:
-                        self.env.save_config(filepath_env)
+                        if generation == 0:
+                            self.env.save_config(filepath_env)
 
-                    filepath_policy = os.path.join("results", self.tag, \
-                            f"{self.tag}_seed{seed}_best_agent_gen{generation}.json")
+                        filepath_policy = os.path.join("results", self.tag, \
+                                f"{self.tag}_seed{seed}_best_agent_gen{generation}.json")
 
-                    self.population[0].save_config(filepath_policy)
+                        self.population[0].save_config(filepath_policy)
 
-                    filepath_numpy_pop =  os.path.join("results", self.tag, \
-                            f"{self.tag}_seed{seed}_population_gen{generation}.npy")
+                        filepath_numpy_pop =  os.path.join("results", self.tag, \
+                                f"{self.tag}_seed{seed}_population_gen{generation}.npy")
 
-                    population_params = self.population[0].get_parameters()[None,:]
+                        population_params = self.population[0].get_parameters()[None,:]
 
-                    for ii in range(1, len(self.population)):
-                        my_params = self.population[ii].get_parameters()[None,:]
-                        population_params = np.append(population_params, my_params) 
+                        for ii in range(1, len(self.population)):
+                            my_params = self.population[ii].get_parameters()[None,:]
+                            population_params = np.append(population_params, my_params) 
 
-                    np.save(filepath_numpy_pop, population_params)
+                        np.save(filepath_numpy_pop, population_params)
 
         for ee in range(1, self.num_workers):
             print(f"send shutown signal to worker {ee}")
@@ -451,9 +451,8 @@ class SimpleGaussianES():
 
     def load_population(self, filepath="./default_pop.npy"):
         pass
-        
 
-if __name__ == "__main__":
+if __name__ == "__main__": #pragma: no cover
 
 
     parser = argparse.ArgumentParser()
