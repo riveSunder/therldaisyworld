@@ -20,8 +20,23 @@ def ft_convolve(grid, kernel):
 
         rh, rw = diff_h % pad_h, diff_w % pad_w
 
+        if rh:
+            hp = rh
+            hm = 0
+        else:
+            hp = 1
+            hm = -1
+
+        if rw:
+            wp = rw
+            wm = 0
+        else:
+            wp = 1
+            wm = -1
+
         padded_kernel = np.pad(kernel, \
-                ((0,0), (0,0), (pad_h+rh, pad_h), (pad_w+rw, pad_w)))
+                ((0,0), (0,0), (pad_h+hp, pad_h+hm), (pad_w+wp, pad_w+wm)))
+
     else:                                                                       
         padded_kernel = kernel                                                  
                                                                                 
