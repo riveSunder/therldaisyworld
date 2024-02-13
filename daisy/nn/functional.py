@@ -9,35 +9,19 @@ def glorot(dims):
 
     return params
 
-def pad_to_2d(kernel, dims, mode="zeros"): 
-                                
-    mid_x = dims[-2] // 2                                                        
-    mid_y = dims[-1] // 2                                                        
-    mid_k_x = kernel.shape[-2] // 2                                              
-    mid_k_y = kernel.shape[-1] // 2                                              
-                                                                                
-    start_x = mid_x - mid_k_x                                                   
-    start_y = mid_y - mid_k_y                                                   
-                                                                                
-    padded = np.zeros(dims)                                                     
-    padded[..., start_x:start_x + kernel.shape[-2],
-            start_y:start_y + kernel.shape[-1]] = kernel             
-
-    if mode == "zeros":
-        pass
-    elif mode == "circular":
-        padded[...,0,0] = kernel[...,-1,-1]
-        padded[...,-1,-1] = kernel[...,0,0]
-        padded[...,-1,0] = kernel[...,0,-1]
-        padded[...,0,-1] = kernel[...,-1,0]
-
-                                                                                
-    return padded                         
-                                                        
 def ft_convolve(grid, kernel):                                                  
                                              
     if np.shape(kernel) != np.shape(grid):                                     
-        padded_kernel = pad_to_2d(kernel, grid.shape)                          
+
+        diff_h  = np.shape(grid)[-2] - np.shape(kernel)[-2] 
+        diff_w =  np.shape(grid)[-1] - np.shape(kernel)[-1] 
+        pad_h = diff_h // 2
+        pad_w = diff_w // 2
+
+        rh, rw = diff_h % pad_h, diff_w % pad_w
+
+        padded_kernel = np.pad(kernel, \
+                ((0,0), (0,0), (pad_h+rh, pad_h), (pad_w+rw, pad_w)))
     else:                                                                       
         padded_kernel = kernel                                                  
                                                                                 
