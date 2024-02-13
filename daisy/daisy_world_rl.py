@@ -5,8 +5,9 @@ import json
 import numpy as np
 import time
 
-from daisy.nn.functional import ft_convolve,\
-        pad_to_2d
+from daisy.nn.functional import ft_convolve
+
+from daisy.helpers import query_kwargs
 
 class RLDaisyWorld():
 
@@ -17,6 +18,10 @@ class RLDaisyWorld():
         # batch_size 
         self.batch_size = 32
         # size of the toroidal daisyworld
+
+        # neighborhood params
+        self.kr = query_kwargs("kr", 1, **kwargs)
+        self.neighborhood_mode = query_kwargs("neighborhood_mode", "moore", **kwargs)
 
         self.dim = kwargs["grid_dimension"] if "grid_dimension" in kwargs.keys() else 16
 
@@ -195,7 +200,7 @@ class RLDaisyWorld():
                     self.agent_indices = self.agent_indices % self.dim
 
                     if action[bb,nn,0] > 4:
-                        # actions 4 through 8 indication grazing movement
+                        # actions 4 through 8 correspond to movement + grazing
 
                         xx, yy = self.agent_indices[bb,nn,0], self.agent_indices[bb,nn,1]
                         self.agent_states[bb,nn,0] += self.grid[bb,1:3,xx,yy].sum()
@@ -204,11 +209,10 @@ class RLDaisyWorld():
 
 
     def get_obs(self, agent_indices=None):
-
-        obs = np.zeros((*agent_indices.shape[:2], self.ch, 3, 3))
-        pad_dims = (*self.grid.shape[:-2], self.grid.shape[-2] + 2, self.grid.shape[-1] + 2)
-        obs_grid = pad_to_2d(self.grid, dims=pad_dims, mode="circular") 
-
+        
+        obs = np.zeros((*agent_indices.shape[:2], self.ch, self.kr*2+1, self.kr*2+1))
+        pad_dims = ((0,0), (0,0), (self.kr, self.kr), (self.kr, self.kr))
+        obs_grid = np.pad(self.grid, pad_dims, mode="wrap")
 
         for bb in range(obs.shape[0]):
             for nn in range(obs.shape[1]):
@@ -236,7 +240,7 @@ class RLDaisyWorld():
         self.local_albedo_kernel = np.zeros((1, 1, 3,3))
         self.local_albedo_kernel[:,:,1,1] = 1.0
         self.adjacent_albedo_kernel = np.ones((1, 1, 3,3)) / 8. 
-        self.adjacent_albedo_kernel[:,:,0,0] = 0.
+        self.adjacent_albedo_kernel[:,:,1,1] = 0.
         kernel_dim = self.local_albedo_kernel.shape[-1]
         padding = 0 
 
