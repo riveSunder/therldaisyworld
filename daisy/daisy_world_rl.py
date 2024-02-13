@@ -240,7 +240,7 @@ class RLDaisyWorld():
         self.local_albedo_kernel = np.zeros((1, 1, 3,3))
         self.local_albedo_kernel[:,:,1,1] = 1.0
         self.adjacent_albedo_kernel = np.ones((1, 1, 3,3)) / 8. 
-        self.adjacent_albedo_kernel[:,:,0,0] = 0.
+        self.adjacent_albedo_kernel[:,:,1,1] = 0.
         kernel_dim = self.local_albedo_kernel.shape[-1]
         padding = 0 
 
