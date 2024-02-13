@@ -212,13 +212,11 @@ class SimpleGaussianES():
 
                 self.population[ii].set_parameters(new_parameters)
 
-
-
     def mpi_fork(self):
         """
         relaunches the current script with workers
         Returns "parent" for original parent, "child" for MPI children
-        (from https://github.com/garymcintire/mpi_util/)
+        (adapted from https://github.com/garymcintire/mpi_util/)
         via https://github.com/google/brain-tokyo-workshop/tree/master/WANNRelease
         """
         global num_worker, rank
@@ -262,7 +260,6 @@ class SimpleGaussianES():
         max_generations = query_kwargs("max_generations", 3, **kwargs)
 
         t0 = time.time()
-
 
         for seed in self.seeds:
             npr.seed(seed)
@@ -342,7 +339,6 @@ class SimpleGaussianES():
                         comm.send((parameters_list, agent_indices), dest=cc)
 
                     # receive current generation's fitnesses from arm processes
-                    population_left = self.population_size
                     for dd in range(1, num_worker):
                         fit, total_steps, agent_done_at = comm.recv(source=dd)
 
@@ -352,7 +348,6 @@ class SimpleGaussianES():
                         
                         total_interactions += total_steps
 
-                
                 self.update_population(fitness)
 
                 t2 = time.time()
