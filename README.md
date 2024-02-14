@@ -15,7 +15,7 @@ The combined effect of light and dark daisies keeps Daisyworld in the habitable 
 
 ### Testing 
 
-TOTAL                                  878    246    72% [coverage.txt](coverage.txt) 
+TOTAL                                  939    246    74% [coverage.txt](coverage.txt) 
 
 ## RLDaisyWorld: a 2D Daisyworld with daisy-grazing agents
 
