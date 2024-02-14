@@ -47,3 +47,57 @@ def ft_convolve(grid, kernel):
     convolved = np.fft.ifftshift(real_spatial_convolved, axes=(-2, -1))
                                                                                 
     return convolved 
+
+def make_von_neumann(radius=1):
+
+    dim = radius * 2 + 1
+    neighborhood = np.zeros((1,1,dim,dim))
+
+    x1 = np.arange(-radius, radius+1)
+    xx, yy = np.meshgrid(x1, x1)
+    
+    #manhattan/taxicab/L1 distance 
+    rr = np.abs(xx) + np.abs(yy)
+
+    neighborhood[:,:, rr <= radius] = 1.0 
+    return neighborhood
+
+def make_moore(radius=1):
+
+    dim = radius * 2 + 1
+    neighborhood = np.zeros((1,1,dim,dim))
+
+    x1 = np.arange(-radius, radius+1)
+    xx, yy = np.meshgrid(x1, x1)
+    
+    xxyy = np.append(np.abs(xx)[None,:,:], np.abs(yy)[None,:,:], axis=0)
+    rr = np.max(xxyy, axis=0)
+
+    neighborhood[:,:, rr <= radius] = 1.0 
+    return neighborhood
+
+def make_circular(radius=1):
+
+    dim = radius * 2 + 1
+    neighborhood = np.zeros((1,1,dim,dim))
+
+    x1 = np.arange(-radius, radius+1)
+    xx, yy = np.meshgrid(x1, x1)
+    
+    rr = np.abs(np.sqrt(xx**2 + yy**2))
+
+    neighborhood[:,:, rr <= radius] = 1.0 
+    return neighborhood
+
+
+def make_neighborhood(radius=1, mode="moore"): 
+
+    if mode == "moore":
+        return make_moore(radius)
+    elif mode == "von_neumann":
+        return make_von_neumann(radius)
+    elif mode == "circular":
+        return make_circular(radius)
+    else:
+        print(f"neighborhood mode {mode} not recognized, using Moore default")
+        return make_moore(radius)
