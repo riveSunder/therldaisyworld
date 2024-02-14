@@ -5,7 +5,7 @@ import json
 import numpy as np
 import time
 
-from daisy.nn.functional import ft_convolve
+from daisy.nn.functional import ft_convolve, make_neighborhood
 
 from daisy.helpers import query_kwargs
 
@@ -21,7 +21,9 @@ class RLDaisyWorld():
 
         # neighborhood params
         self.kr = query_kwargs("kr", 1, **kwargs)
-        self.neighborhood_mode = query_kwargs("neighborhood_mode", "moore", **kwargs)
+        self.neighborhood_mode = query_kwargs("neighborhood_mode", "von_neumann", **kwargs)
+
+        self.neighborhood = make_neighborhood(self.kr, self.neighborhood_mode)
 
         self.dim = kwargs["grid_dimension"] if "grid_dimension" in kwargs.keys() else 16
 
@@ -221,6 +223,9 @@ class RLDaisyWorld():
 
                 obs[bb,nn,:,:,:] = obs_grid[\
                         bb,:,x_start:x_start+3, y_start:y_start+3]
+
+        #obs = obs[:,:,:,self.neighborhood == 1].reshape(*obs.shape[:-2], -1) 
+        obs = obs * self.neighborhood 
 
         return obs
 
