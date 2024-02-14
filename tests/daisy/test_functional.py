@@ -32,15 +32,15 @@ class TestFunctional(unittest.TestCase):
 
                 if mode == "moore":
                     # corners are included
-                    nbhd[0,0] == 1.0
-                    nbhd[-1,0] == 1.0
-                    nbhd[0,-1] == 1.0
-                    nbhd[-1,-1] == 1.0
+                    self.assertTrue(nbhd[0,0] == 1.0)
+                    self.assertTrue(nbhd[-1,0] == 1.0)
+                    self.assertTrue(nbhd[0,-1] == 1.0)
+                    self.assertTrue(nbhd[-1,-1] == 1.0)
                 else:
                     #no corners
-                    nbhd[0,0] == 0.0
-                    nbhd[-1,0] == 0.0
-                    nbhd[0,-1] == 0.0
-                    nbhd[-1,-1] == 0.0
+                    self.assertTrue(nbhd[0,0] == 0.0)
+                    self.assertTrue(nbhd[-1,0] == 0.0)
+                    self.assertTrue(nbhd[0,-1] == 0.0)
+                    self.assertTrue(nbhd[-1,-1] == 0.0)
 
 
