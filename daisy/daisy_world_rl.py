@@ -3,6 +3,7 @@ import os
 import json
 
 import numpy as np
+import numpy.random as npr
 import time
 
 from daisy.nn.functional import ft_convolve, make_neighborhood
@@ -66,6 +67,7 @@ class RLDaisyWorld():
         self.albedo_dark = 0.25
         # optimal temperature for plant growth (Kelvin)
         self.temp_optimal = 295.5
+        self.food_chain_penalty = 0.5
         
         # proportion of daisies per cell
         self.initial_al = 0.2
@@ -74,7 +76,7 @@ class RLDaisyWorld():
         self.light_proportion = 0.33
         self.dark_proportion = 0.33
 
-        self.n_agents = 4
+        self.n_agents = query_kwargs("n_agents", 4, **kwargs)
 
         self.initialize_neighborhood()
         self.initialize_agents()
@@ -179,7 +181,7 @@ class RLDaisyWorld():
     def update_agents(self, action):
 
 
-        self.agent_states = np.clip(self.agent_states - self.agent_gamma, 0.,1.)
+        self.agent_states -= self.agent_gamma
 
         for bb in range(action.shape[0]):
             for nn in range(action.shape[1]):
@@ -215,6 +217,31 @@ class RLDaisyWorld():
 
         # TODO: agents aren't allowed to occupy the same cells in a grid
         # (required for multiagent env mode)
+        if self.collision_mode == 1:
+          for bb in range(self.agent_indices.shape[0]):
+            for xx in range(self.grid.shape[-2]):
+              for yy in range(self.grid.shape[-1]):
+
+                residents = (self.agent_indices[bb:bb+1] == np.array([xx,yy])
+                    ).mean(-1, keepdims=True) == 1
+
+                # the agent with the most state value eats the smaller 
+                if residents.sum() > 1:
+
+                  resident_values = self.agent_states[bb:bb+1][residents]
+                  temp_values = 1.0 * self.agent_states[bb:bb+1] \
+                      + 0.01 * npr.rand(*self.agent_states[bb:bb+1].shape)
+
+                  winner_value = np.max(temp_values[residents])
+                  winner_index = temp_values == winner_value
+
+                  eat = self.agent_states[bb:bb+1][residents][temp_values[residents] != winner_value].sum()
+
+                  self.agent_states[bb:bb+1][winner_index] += self.food_chain_penalty * eat
+
+                  self.agent_states[bb:bb+1][residents][temp_values[residents] != winner_value] *= 0.0
+
+        self.agent_states = np.clip(self.agent_states, 0.,1.)
 
     def get_obs(self, agent_indices=None):
         
@@ -484,7 +511,7 @@ if __name__ == "__main__":
 
     for ii in range(9):
         for jj in range(1):
-            action = np.array([[[ii]]]) #randint(9, size=(env.batch_size, env.n_agents, 1))
+            action = np.array([[[ii]]]) 
             
             print(env.grid[:,4,:,:])
 
