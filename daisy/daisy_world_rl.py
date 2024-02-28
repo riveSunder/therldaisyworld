@@ -215,9 +215,6 @@ class RLDaisyWorld():
 
         # TODO: agents aren't allowed to occupy the same cells in a grid
         # (required for multiagent env mode)
-              
-
-            
 
     def get_obs(self, agent_indices=None):
         
@@ -295,6 +292,8 @@ class RLDaisyWorld():
         growth = self.calculate_growth(beta, beta_l, beta_d, daisy_density)
 
         grid[:,3:4,:,:] = temp
+        grid[:,4:5,:,:] = temp_l
+        grid[:,5:6,:,:] = temp_d
         self.grid = grid
 
 
