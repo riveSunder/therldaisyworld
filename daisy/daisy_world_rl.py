@@ -37,6 +37,11 @@ class RLDaisyWorld():
         self.q = 0.2 * self.S / self.sigma
         self.use_microclimate = True
 
+        # collision handling 
+        #   0 - collisions ignored, 
+        #   1 - 'larger' agent gets 1/2 the smaller's energy and the smaller is zeroed out
+        self.collision_mode = query_kwargs("collision_mode", 1, **kwargs)
+
         if self.use_microclimate:
             self.q2 = self.q / 8.
         else:
@@ -168,13 +173,12 @@ class RLDaisyWorld():
         self.agent_indices = np.random.randint(self.dim, \
                 size=(self.batch_size, self.n_agents, 2))
 
-        # the "bellies" of the agents
+        # agent energy stores
         self.agent_states = np.ones((self.batch_size, self.n_agents, 1))
 
     def update_agents(self, action):
 
-        # TODO: agents aren't allowed to occupy the same cells in a grid
-        # (required for multiagent env mode)
+
         self.agent_states = np.clip(self.agent_states - self.agent_gamma, 0.,1.)
 
         for bb in range(action.shape[0]):
@@ -209,6 +213,11 @@ class RLDaisyWorld():
                         
                         self.grid[bb,1:3,xx,yy] *= 0.0
 
+        # TODO: agents aren't allowed to occupy the same cells in a grid
+        # (required for multiagent env mode)
+              
+
+            
 
     def get_obs(self, agent_indices=None):
         
@@ -402,13 +411,15 @@ class RLDaisyWorld():
         daisy_density = self.calculate_daisy_density(grid[:,1:3,:,:])
 
         temp, temp_light, temp_dark = self.calculate_temperature(local_albedo, adjacent_albedo)
+
         beta, beta_l, beta_d = self.calculate_growth_rate(temp, temp_light, temp_dark)
+
         growth = self.calculate_growth(beta, beta_l, beta_d, daisy_density)
 
         new_grid = 0. * grid
-        grid[:,3:4,:,:] = temp
-        grid[:,4:5,:,:] = temp_light
-        grid[:,5:6,:,:] = temp_dark
+        new_grid[:,3:4,:,:] = temp
+        new_grid[:,4:5,:,:] = temp_light
+        new_grid[:,5:6,:,:] = temp_dark
         new_grid[:,1:3, :,:] = np.clip(grid[:,1:3, :,:] + self.dt * growth, 0,1)
         new_grid[:,0, :,:] = self.p - new_grid[:,1, :,:] - new_grid[:,2,:,:] #.sum(dim=1)
 
