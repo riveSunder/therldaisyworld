@@ -41,7 +41,7 @@ class RLDaisyWorld():
         # collision handling 
         #   0 - collisions ignored, 
         #   1 - 'larger' agent gets 1/2 the smaller's energy and the smaller is zeroed out
-        self.collision_mode = query_kwargs("collision_mode", 1, **kwargs)
+        self.collision_mode = query_kwargs("collision_mode", 0, **kwargs)
 
         if self.use_microclimate:
             self.q2 = self.q / 8.
