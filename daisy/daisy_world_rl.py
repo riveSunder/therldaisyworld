@@ -3,6 +3,7 @@ import os
 import json
 
 import numpy as np
+import numpy.random as npr
 import time
 
 from daisy.nn.functional import ft_convolve, make_neighborhood
@@ -37,6 +38,11 @@ class RLDaisyWorld():
         self.q = 0.2 * self.S / self.sigma
         self.use_microclimate = True
 
+        # collision handling 
+        #   0 - collisions ignored, 
+        #   1 - 'larger' agent gets 1/2 the smaller's energy and the smaller is zeroed out
+        self.collision_mode = query_kwargs("collision_mode", 0, **kwargs)
+
         if self.use_microclimate:
             self.q2 = self.q / 8.
         else:
@@ -61,6 +67,7 @@ class RLDaisyWorld():
         self.albedo_dark = 0.25
         # optimal temperature for plant growth (Kelvin)
         self.temp_optimal = 295.5
+        self.food_chain_penalty = 0.5
         
         # proportion of daisies per cell
         self.initial_al = 0.2
@@ -69,7 +76,7 @@ class RLDaisyWorld():
         self.light_proportion = 0.33
         self.dark_proportion = 0.33
 
-        self.n_agents = 4
+        self.n_agents = query_kwargs("n_agents", 4, **kwargs)
 
         self.initialize_neighborhood()
         self.initialize_agents()
@@ -168,14 +175,13 @@ class RLDaisyWorld():
         self.agent_indices = np.random.randint(self.dim, \
                 size=(self.batch_size, self.n_agents, 2))
 
-        # the "bellies" of the agents
+        # agent energy stores
         self.agent_states = np.ones((self.batch_size, self.n_agents, 1))
 
     def update_agents(self, action):
 
-        # TODO: agents aren't allowed to occupy the same cells in a grid
-        # (required for multiagent env mode)
-        self.agent_states = np.clip(self.agent_states - self.agent_gamma, 0.,1.)
+
+        self.agent_states -= self.agent_gamma
 
         for bb in range(action.shape[0]):
             for nn in range(action.shape[1]):
@@ -209,6 +215,33 @@ class RLDaisyWorld():
                         
                         self.grid[bb,1:3,xx,yy] *= 0.0
 
+        # TODO: agents aren't allowed to occupy the same cells in a grid
+        # (required for multiagent env mode)
+        if self.collision_mode == 1:
+          for bb in range(self.agent_indices.shape[0]):
+            for xx in range(self.grid.shape[-2]):
+              for yy in range(self.grid.shape[-1]):
+
+                residents = (self.agent_indices[bb:bb+1] == np.array([xx,yy])
+                    ).mean(-1, keepdims=True) == 1
+
+                # the agent with the most state value eats the smaller 
+                if residents.sum() > 1:
+
+                  resident_values = self.agent_states[bb:bb+1][residents]
+                  temp_values = 1.0 * self.agent_states[bb:bb+1] \
+                      + 0.01 * npr.rand(*self.agent_states[bb:bb+1].shape)
+
+                  winner_value = np.max(temp_values[residents])
+                  winner_index = temp_values == winner_value
+
+                  eat = self.agent_states[bb:bb+1][residents][temp_values[residents] != winner_value].sum()
+
+                  self.agent_states[bb:bb+1][winner_index] += self.food_chain_penalty * eat
+
+                  self.agent_states[bb:bb+1][residents][temp_values[residents] != winner_value] *= 0.0
+
+        self.agent_states = np.clip(self.agent_states, 0.,1.)
 
     def get_obs(self, agent_indices=None):
         
@@ -286,6 +319,8 @@ class RLDaisyWorld():
         growth = self.calculate_growth(beta, beta_l, beta_d, daisy_density)
 
         grid[:,3:4,:,:] = temp
+        grid[:,4:5,:,:] = temp_l
+        grid[:,5:6,:,:] = temp_d
         self.grid = grid
 
 
@@ -402,13 +437,15 @@ class RLDaisyWorld():
         daisy_density = self.calculate_daisy_density(grid[:,1:3,:,:])
 
         temp, temp_light, temp_dark = self.calculate_temperature(local_albedo, adjacent_albedo)
+
         beta, beta_l, beta_d = self.calculate_growth_rate(temp, temp_light, temp_dark)
+
         growth = self.calculate_growth(beta, beta_l, beta_d, daisy_density)
 
         new_grid = 0. * grid
-        grid[:,3:4,:,:] = temp
-        grid[:,4:5,:,:] = temp_light
-        grid[:,5:6,:,:] = temp_dark
+        new_grid[:,3:4,:,:] = temp
+        new_grid[:,4:5,:,:] = temp_light
+        new_grid[:,5:6,:,:] = temp_dark
         new_grid[:,1:3, :,:] = np.clip(grid[:,1:3, :,:] + self.dt * growth, 0,1)
         new_grid[:,0, :,:] = self.p - new_grid[:,1, :,:] - new_grid[:,2,:,:] #.sum(dim=1)
 
@@ -474,7 +511,7 @@ if __name__ == "__main__":
 
     for ii in range(9):
         for jj in range(1):
-            action = np.array([[[ii]]]) #randint(9, size=(env.batch_size, env.n_agents, 1))
+            action = np.array([[[ii]]]) 
             
             print(env.grid[:,4,:,:])
 
