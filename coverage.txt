@@ -4,15 +4,13 @@ daisy/__init__.py                        0      0   100%
 daisy/agents/__init__.py                 0      0   100%
 daisy/agents/greedy.py                  19      2    89%
 daisy/agents/mlp.py                     87     33    62%
-daisy/daisy_world_rl.py                301     87    71%
+daisy/daisy_world_rl.py                303     87    71%
 daisy/evo/__init__.py                    0      0   100%
 daisy/evo/cmaes.py                      45      1    98%
-daisy/evo/sges.py                      277    121    56%
+daisy/evo/sges.py                      278    122    56%
 daisy/helpers.py                         5      0   100%
 daisy/nn/__init__.py                     0      0   100%
 daisy/nn/functional.py                  65      5    92%
-tests/__init__.py                        0      0   100%
-tests/daisy/__init__.py                  0      0   100%
 tests/daisy/agents/test_greedy.py       23      0   100%
 tests/daisy/evo/test_cmaes.py           43      4    91%
 tests/daisy/evo/test_sges.py            41      4    90%
@@ -20,4 +18,4 @@ tests/daisy/test_daisy_world_rl.py      45      0   100%
 tests/daisy/test_functional.py          24      0   100%
 tests/test_all.py                        8      0   100%
 --------------------------------------------------------
-TOTAL                                  983    257    74%
+TOTAL                                  986    258    74%

@@ -15,7 +15,7 @@ The combined effect of light and dark daisies keeps Daisyworld in the habitable 
 
 ### Testing 
 
-TOTAL                                  983    257    74% [coverage.txt](coverage.txt) 
+TOTAL                                  986    258    74% [coverage.txt](coverage.txt) 
 
 ## RLDaisyWorld: a 2D Daisyworld with daisy-grazing agents
 
@@ -89,6 +89,8 @@ RLDaisyWorld is a work-in-progress, but you can tinker with it if you want. The 
 You'll need to install `libopenmpi-dev if you'd like to use the evolutionary baselines for training agents. MPI is used to orchestrate multiple instances of DaisyWorld in parallel to train a population of agents.
 
 ```
+# required for running experiments with message passing
+# mpi is required for tests to run, and for using `evo` algos
 sudo apt update
 sudo apt install -y libopenmpi-dev
 ```
