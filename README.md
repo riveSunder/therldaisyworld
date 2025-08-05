@@ -11,7 +11,7 @@ The combined effect of light and dark daisies keeps Daisyworld in the habitable 
 
 ![daisyworld curve](assets/simple_daisyworld.png)
 
-[1] A. J. Watson and J. E. Lovelock, “Biological homeostasis of the global environment: the parable of Daisyworld,” Tellus B, vol. 35B, no. 4, pp. 284–289, Sep. 1983, doi: 10.1111/j.1600-0889.1983.tb00031.x.
+[1] A. J. Watson and J. E. Lovelock, “Biological homeostasis of the global environment: the parable of Daisyworld,” Tellus B, vol. 35B, no. 4, pp. 284–289, Sep. 1983, doi: 10.1111/j.1600-0889.1983.tb00031.x. <a href="https://onlinelibrary.wiley.com/doi/abs/10.1111/j.1600-0889.1983.tb00031.x">online</a>  
 
 ### Testing 
 
